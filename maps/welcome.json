@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "id": "welcome-example",
+  "title": "Welcome to mind-map",
+  "createdAt": "2026-06-22T00:00:00.000Z",
+  "updatedAt": "2026-06-22T00:00:00.000Z",
+  "layout": "right",
+  "root": {
+    "id": "root",
+    "text": "Welcome to mind-map",
+    "children": [
+      {
+        "id": "child-1",
+        "text": "Keyboard first — try Tab, Enter, hjkl, Space",
+        "children": [
+          {
+            "id": "child-1-1",
+            "text": "Tab adds a child node",
+            "children": []
+          },
+          {
+            "id": "child-1-2",
+            "text": "Enter adds a sibling",
+            "children": []
+          }
+        ]
+      },
+      {
+        "id": "child-2",
+        "text": "Mouse works too — scroll to pan, pinch to zoom",
+        "children": []
+      },
+      {
+        "id": "child-3",
+        "text": "Press ? for the full hotkey cheatsheet",
+        "children": []
+      },
+      {
+        "id": "child-4",
+        "text": "Your maps live in the maps/ folder on this machine",
+        "children": []
+      }
+    ]
+  }
+}

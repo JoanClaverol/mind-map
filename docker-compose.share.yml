@@ -1,0 +1,16 @@
+services:
+  mind-map:
+    build: .
+    ports:
+      - "5454:5454"
+    volumes:
+      - ./maps:/app/maps
+    environment:
+      - NODE_ENV=production
+      - MAPS_DIR=/app/maps
+      # Optional: leave empty to disable voice / AI / segon-cervell features.
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - REFINE_MODEL=${REFINE_MODEL:-deepseek/deepseek-v4-flash}
+      - TRANSCRIBER_URL=${TRANSCRIBER_URL:-}
+      - SEGON_CERVELL_MCP_URL=${SEGON_CERVELL_MCP_URL:-}
+    restart: unless-stopped

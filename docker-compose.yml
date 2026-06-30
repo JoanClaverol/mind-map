@@ -1,0 +1,34 @@
+services:
+  mind-map:
+    build: .
+    container_name: mind-map
+    ports:
+      - "5454:5454"
+    volumes:
+      - ./maps:/app/maps
+    environment:
+      - SEGON_CERVELL_MCP_URL=http://host.docker.internal:8000/mcp
+      - TRANSCRIBER_URL=http://transcriber:8080
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - REFINE_MODEL=${REFINE_MODEL:-deepseek/deepseek-v4-flash}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - transcriber
+    restart: unless-stopped
+
+  transcriber:
+    build: ./transcriber
+    container_name: mind-map-transcriber
+    ports:
+      - "8124:8080" # published so `pnpm dev` (Node on the host) can reach it
+    volumes:
+      - whisper-cache:/opt/whisper-cache
+    environment:
+      - HF_HOME=/opt/whisper-cache
+      - WHISPER_MODEL=mobiuslabsgmbh/faster-whisper-large-v3-turbo
+    restart: unless-stopped
+
+volumes:
+  whisper-cache:
+    external: true # shared with other tools on this machine; model already cached
