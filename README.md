@@ -6,8 +6,8 @@ whole thing is small enough to read and bend to your workflow.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<!-- TODO: drop a screenshot or GIF here — e.g. ![mind-map](docs/screenshot.png) -->
-<p align="center"><em>(screenshot coming soon)</em></p>
+<!-- Placeholder art. Replace docs/screenshot.svg with a real screenshot or GIF (a .png/.gif is fine — just update the path below). -->
+<p align="center"><img src="docs/screenshot.svg" alt="mind-map" width="100%"></p>
 
 ## Why
 
