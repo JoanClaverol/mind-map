@@ -75,7 +75,7 @@ interface FileNode {
   id: string;
   text: string;
   collapsed?: boolean;
-  todoId?: string;      // only if pushed to segon-cervell
+  todoId?: string;      // set only if pushed to the external todo service
   children: FileNode[];
 }
 
