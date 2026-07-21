@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { migrateMapFile } from '../src/model/migrate';
-import { SCHEMA_VERSION, normalizeFolderName } from '../src/model/types';
+import { FOLDERS_SCHEMA_VERSION, normalizeFolderName } from '../src/model/types';
 import type { FileNode, FolderInfo, FoldersManifest, MapFile, MapMeta } from '../src/model/types';
 
 const MAPS_DIR = process.env.MAPS_DIR ?? path.resolve(process.cwd(), 'maps');
@@ -25,6 +25,11 @@ function countNodes(node: FileNode): number {
   return 1 + node.children.reduce((sum, child) => sum + countNodes(child), 0);
 }
 
+/** Total nodes across the main tree and all floating trees. */
+function countMapNodes(map: MapFile): number {
+  return countNodes(map.root) + (map.floating ?? []).reduce((sum, f) => sum + countNodes(f.root), 0);
+}
+
 /** List map metadata. Unparseable files are skipped with a warning, never a 500. */
 export async function listMaps(): Promise<{ maps: MapMeta[]; warnings: string[] }> {
   await ensureMapsDir();
@@ -40,7 +45,7 @@ export async function listMaps(): Promise<{ maps: MapMeta[]; warnings: string[] 
         id: map.id,
         title: map.title,
         updatedAt: map.updatedAt,
-        nodeCount: countNodes(map.root),
+        nodeCount: countMapNodes(map),
         pinned: map.pinned ?? false,
         folder: map.folder,
       });
@@ -77,7 +82,7 @@ export async function readFolders(): Promise<string[]> {
 /** Atomic write of the folder manifest, mirroring writeMap. */
 export async function writeFolders(folders: string[]): Promise<void> {
   await ensureMapsDir();
-  const manifest: FoldersManifest = { schemaVersion: SCHEMA_VERSION, folders };
+  const manifest: FoldersManifest = { schemaVersion: FOLDERS_SCHEMA_VERSION, folders };
   const tmp = path.join(MAPS_DIR, '.tmp-folders.json');
   await fs.writeFile(tmp, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
   await fs.rename(tmp, FOLDERS_PATH);

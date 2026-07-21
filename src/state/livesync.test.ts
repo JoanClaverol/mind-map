@@ -23,7 +23,7 @@ class FakeEventSource {
 }
 
 const mapFile: MapFile = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'map000000001',
   title: 'Live test',
   createdAt: '2026-01-01T00:00:00.000Z',
@@ -130,6 +130,23 @@ describe('livesync', () => {
     expect(s.doc!.nodes.aaaaaaaaaaaa.text).toBe('still applied');
     expect(s.undoStack).toHaveLength(1);
     expect(s.saveState).toBe('dirty');
+  });
+
+  it('a create_tree op in a batch replays live and undoes as one step', () => {
+    emitOps([
+      { type: 'create_tree', root: { id: 'tree00000001', text: 'Floating', children: [] }, pos: { x: 400, y: 50 } },
+      { type: 'add_relationship', relId: 'rel000000009', fromId: 'aaaaaaaaaaaa', toId: 'tree00000001' },
+    ]);
+    const s = useStore.getState();
+    expect(s.doc!.nodes.tree00000001.text).toBe('Floating');
+    expect(s.doc!.floating).toEqual([{ rootId: 'tree00000001', pos: { x: 400, y: 50 } }]);
+    expect(s.doc!.relationships).toHaveLength(1);
+    expect(s.undoStack).toHaveLength(1);
+    s.undo();
+    const after = useStore.getState();
+    expect(after.doc!.nodes.tree00000001).toBeUndefined();
+    expect(after.doc!.floating).toEqual([]);
+    expect(after.doc!.relationships).toEqual([]);
   });
 
   it('close() detaches the stream', () => {

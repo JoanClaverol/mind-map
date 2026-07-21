@@ -1,5 +1,5 @@
 import { api } from '../api/client';
-import { denormalize } from '../model/doc';
+import { denormalize, serializeFloating } from '../model/doc';
 import { applyDocOp, type MapOp } from '../model/ops';
 import { useStore } from './store';
 
@@ -62,7 +62,8 @@ export function initLiveSync(mapId: string): () => void {
         const unchanged =
           map.title === cur.title &&
           JSON.stringify(map.root) === JSON.stringify(denormalize(cur.doc)) &&
-          JSON.stringify(map.relationships ?? []) === JSON.stringify(cur.doc.relationships);
+          JSON.stringify(map.relationships ?? []) === JSON.stringify(cur.doc.relationships) &&
+          JSON.stringify(map.floating ?? []) === JSON.stringify(serializeFloating(cur.doc) ?? []);
         if (unchanged) return;
         cur.loadMap(map);
         cur.addToast('info', 'Map changed outside the browser — reloaded');

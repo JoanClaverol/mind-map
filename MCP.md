@@ -8,9 +8,10 @@ mindmap-mcp is a local, keyboard-first mind mapping canvas. Maps are stored as p
 
 - Read the project context and map schema.
 - List existing maps; **search node text across one or all maps**.
-- Read a map as JSON or as an id-annotated markdown outline (including its relationship arrows), or read just one branch.
+- Read a map as JSON or as an id-annotated markdown outline (including its floating trees and relationship arrows), or read just one branch.
 - **Edit an existing map surgically**: add, edit, move, or delete specific nodes.
-- **Connect ideas with relationship arrows**: free directional cross-links between any two nodes.
+- **Work with floating trees**: create detached trees on the canvas (`create_tree`), split a branch out (`detach_node`), attach a tree under a node (`move_node` on its root).
+- **Connect ideas with relationship arrows**: free directional cross-links between any two nodes — including across trees.
 - **Batch several edits atomically** with `apply_ops`.
 - Create a new map from a markdown outline.
 - Generate a new map from a prompt using an LLM (only present when OpenRouter is configured).
@@ -85,12 +86,25 @@ Returns all saved maps with id, title, node count, and last update time.
 
 - Arguments: `{ map_id: string, node_id: string, new_parent_id: string, before_sibling_id?: string }`
 - Moves a node with its whole subtree. Omit `before_sibling_id` to append at the end; pass a child of the new parent to insert before it.
-- Moving a node into its own subtree is rejected.
+- Passing a **floating tree's root** attaches that whole tree under the new parent.
+- Moving a node into its own subtree is rejected; the main root cannot be moved.
 
 ### `delete_node`
 
 - Arguments: `{ map_id: string, node_id: string }`
-- Deletes the node and its whole subtree. The root cannot be deleted. Relationships touching deleted nodes are pruned.
+- Deletes the node and its whole subtree; a **floating tree's root** deletes that whole tree. The main root cannot be deleted. Relationships touching deleted nodes are pruned.
+
+### `create_tree`
+
+- Arguments: `{ map_id: string, markdown: string, x?: number, y?: number }`
+- Creates a **floating tree**: a detached tree on the same canvas, for ideas that don't (yet) belong anywhere. The markdown must have exactly **one** top-level bullet — it becomes the tree root. Omit `x`/`y` to auto-place below existing trees (position is advisory; the user drags trees around).
+- Returns the new tree's id-annotated outline and position.
+
+### `detach_node`
+
+- Arguments: `{ map_id: string, node_id: string, x?: number, y?: number }`
+- Splits a node (with its whole subtree) out of its parent so it becomes a floating tree. The main root and existing floating roots cannot be detached.
+- To re-attach any floating tree, call `move_node` with its root id and a new parent.
 
 ### `add_relationship`
 
@@ -122,7 +136,9 @@ Returns all saved maps with id, title, node count, and last update time.
   { "op": "delete_node", "node_id": "…" },
   { "op": "add_relationship", "from_id": "…", "to_id": "…", "label": "causes" },
   { "op": "edit_relationship", "relationship_id": "…", "label": "…" },
-  { "op": "delete_relationship", "relationship_id": "…" }
+  { "op": "delete_relationship", "relationship_id": "…" },
+  { "op": "create_tree", "markdown": "- New cluster\n  - Spark", "x": 500, "y": 100 },
+  { "op": "detach_node", "node_id": "…", "x": 700, "y": 40 }
 ] }
 ```
 
@@ -147,7 +163,7 @@ This tool is **only registered when `OPENROUTER_API_KEY` is configured** — if 
 
 ```ts
 interface MapFile {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;           // map id, also the JSON file name
   title: string;
   createdAt: string;    // ISO 8601
@@ -156,6 +172,7 @@ interface MapFile {
   pinned?: boolean;
   relationships?: Relationship[];
   root: FileNode;
+  floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
 }
 
 interface FileNode {
@@ -163,6 +180,10 @@ interface FileNode {
   text: string;
   collapsed?: boolean;
   todoId?: string;      // set only if pushed to the external todo service
+  color?: string;       // reserved for a future release — do not set yet
+  icon?: string;        // reserved
+  note?: string;        // reserved
+  tags?: string[];      // reserved
   children: FileNode[];
 }
 
@@ -174,9 +195,9 @@ interface Relationship {
 }
 ```
 
-- The root node is the map title.
-- `layout` defaults to `'right'` if omitted.
-- `relationships` are free directional arrows between any two nodes; they are **not** parent/child links.
+- The root node is the map title. `floating` holds detached trees (XMind floating topics); `pos` is the world position of each tree root, advisory for you (the user drags trees).
+- `layout` defaults to `'right'` if omitted; floating trees always lay out as compact right-trees.
+- `relationships` are free directional arrows between any two nodes — including across trees; they are **not** parent/child links.
 
 ## How to generate a good map
 
@@ -236,6 +257,12 @@ This will create a root node "Trip to Japan" with four children, each with their
 1. Locate the two node ids (`find_nodes` or `read_map_markdown`).
 2. `add_relationship` with a short label naming the connection ("causes", "depends on", "contrasts with").
 3. Arrows are for cross-cutting links — if one idea simply belongs under another, `move_node` it there instead.
+
+### Brainstorm with floating trees
+
+1. When an idea doesn't fit the current structure, `create_tree` it as its own floating cluster instead of forcing it under a node.
+2. Connect clusters to the main tree (or each other) with `add_relationship` arrows as the relations emerge.
+3. When a cluster's place becomes clear, attach it: `move_node` with the tree's root id. The reverse — `detach_node` — splits an overgrown branch out to stand alone.
 
 ### Restructure in one step
 

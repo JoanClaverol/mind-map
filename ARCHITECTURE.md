@@ -75,7 +75,9 @@ This split keeps the request handlers identical in both environments.
   [`src/layout/measure.ts`](src/layout/measure.ts), which measures text in an offscreen div
   using the same `.node-text` CSS as the real nodes — so measured and rendered sizes always
   agree. Four structures are supported: `right` (logic chart, default), `balanced` (both
-  sides of the root), `down` (org chart), and `timeline` (roadmap). The result includes a
+  sides of the root), `down` (org chart), and `timeline` (roadmap). **Floating trees** always
+  lay out as compact right-trees, placed by translating each tree so its root lands on the
+  stored `pos`. The result includes a
   `dirs` map saying which way each branch grows; rendering, `hjkl` navigation, and drag-drop
   all key off it.
 
@@ -106,7 +108,7 @@ persistence layer — friendly to git, backups, and hand-editing.
 
 ```ts
 interface MapFile {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;            // map id, also the file name
   title: string;
   createdAt: string;     // ISO 8601
@@ -115,6 +117,8 @@ interface MapFile {
   pinned?: boolean;
   relationships?: Relationship[];
   root: FileNode;
+  /** Floating trees (XMind floating topics); pos = world coords of each tree root. */
+  floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
 }
 
 interface FileNode {
@@ -122,6 +126,10 @@ interface FileNode {
   text: string;          // node label; supports inline markdown
   collapsed?: boolean;
   todoId?: string;       // set once pushed to the external todo service
+  color?: string;        // reserved for node metadata (phase 3) — round-tripped, no UI yet
+  icon?: string;         // reserved
+  note?: string;         // reserved
+  tags?: string[];       // reserved
   children: FileNode[];
 }
 

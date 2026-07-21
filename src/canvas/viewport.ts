@@ -1,4 +1,4 @@
-import type { Viewport } from '../model/types';
+import type { Position, Viewport } from '../model/types';
 import type { Rect } from '../layout/layout';
 
 export const MIN_ZOOM = 0.25;
@@ -6,6 +6,14 @@ export const MAX_ZOOM = 2.5;
 
 function clampZoom(z: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
+}
+
+/** Client (screen) coordinates → world coordinates under the given viewport. */
+export function screenToWorld(vp: Viewport, hostRect: DOMRect, clientX: number, clientY: number): Position {
+  return {
+    x: (clientX - hostRect.left - vp.x) / vp.zoom,
+    y: (clientY - hostRect.top - vp.y) / vp.zoom,
+  };
 }
 
 /** Zoom by factor, keeping the screen point (cx, cy) fixed. */

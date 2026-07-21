@@ -406,6 +406,120 @@ describe('mcp-server tools', () => {
     expect(bBranch).toContain('## Relationships'); // arrow touches b too
   });
 
+  it('create_tree makes a floating tree, enforces one top-level bullet, auto-places', async () => {
+    const client = await createClient();
+    const createText = textContent(
+      await client.callTool({ name: 'create_map_from_outline', arguments: { title: 'Floaty', markdown: '- Main' } }),
+    );
+    const mapId = createText.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+
+    const multi = await client.callTool({
+      name: 'create_tree',
+      arguments: { map_id: mapId, markdown: '- One\n- Two' },
+    });
+    expect(multi.isError).toBe(true);
+    expect(textContent(multi)).toContain('multiple top-level bullets');
+
+    const made = await client.callTool({
+      name: 'create_tree',
+      arguments: { map_id: mapId, markdown: '- Idea cloud\n  - Spark', x: 500, y: 120 },
+    });
+    expect(made.isError).toBeFalsy();
+    expect(textContent(made)).toContain('at (500, 120)');
+    const treeRootId = textContent(made).match(/- Idea cloud \(id: ([A-Za-z0-9_-]{12})\)/)?.[1]!;
+
+    // auto-placement lands below the existing floating tree
+    const auto = await client.callTool({ name: 'create_tree', arguments: { map_id: mapId, markdown: '- Second' } });
+    expect(auto.isError).toBeFalsy();
+    expect(textContent(auto)).toContain('at (0, 320)'); // 120 + 200
+
+    const file = path.join(mapsDir, `${mapId}.json`);
+    const saved = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    expect(saved.floating).toHaveLength(2);
+    expect(saved.floating![0].root.id).toBe(treeRootId);
+
+    // reads: floating section + find_nodes reach into floating trees
+    const md = textContent(await client.callTool({ name: 'read_map_markdown', arguments: { map_id: mapId } }));
+    expect(md).toContain('## Floating trees');
+    expect(md).toContain(`- Idea cloud (id: ${treeRootId})`);
+    const found = textContent(await client.callTool({ name: 'find_nodes', arguments: { query: 'spark', map_id: mapId } }));
+    expect(found).toContain('path: Idea cloud');
+
+    // attach via move_node, then delete the other tree via delete_node
+    const mainRootId = saved.root.id;
+    const attach = await client.callTool({
+      name: 'move_node',
+      arguments: { map_id: mapId, node_id: treeRootId, new_parent_id: mainRootId },
+    });
+    expect(attach.isError).toBeFalsy();
+    const afterAttach = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    expect(afterAttach.floating).toHaveLength(1);
+    expect(afterAttach.root.children.map((n) => n.id)).toContain(treeRootId);
+
+    const del = await client.callTool({
+      name: 'delete_node',
+      arguments: { map_id: mapId, node_id: afterAttach.floating![0].root.id },
+    });
+    expect(del.isError).toBeFalsy();
+    const afterDelete = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    expect(afterDelete.floating).toBeUndefined();
+  });
+
+  it('detach_node splits a branch out; apply_ops mixes tree ops atomically', async () => {
+    const client = await createClient();
+    const createText = textContent(
+      await client.callTool({
+        name: 'create_map_from_outline',
+        arguments: { title: 'Detach', markdown: '- Keep\n- Split\n  - Child' },
+      }),
+    );
+    const mapId = createText.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+    const file = path.join(mapsDir, `${mapId}.json`);
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    const splitId = raw.root.children[1].id;
+
+    const detached = await client.callTool({
+      name: 'detach_node',
+      arguments: { map_id: mapId, node_id: splitId, x: 700, y: 10 },
+    });
+    expect(detached.isError).toBeFalsy();
+    let saved = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    expect(saved.root.children).toHaveLength(1);
+    expect(saved.floating![0]).toMatchObject({ pos: { x: 700, y: 10 }, root: { id: splitId } });
+    expect(saved.floating![0].root.children).toHaveLength(1); // subtree intact
+
+    const batch = await client.callTool({
+      name: 'apply_ops',
+      arguments: {
+        map_id: mapId,
+        ops: [
+          { op: 'create_tree', markdown: '- Batch tree', x: 900, y: 0 },
+          { op: 'move_node', node_id: splitId, new_parent_id: raw.root.id }, // attach back
+        ],
+      },
+    });
+    expect(batch.isError).toBeFalsy();
+    saved = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    expect(saved.floating).toHaveLength(1);
+    expect(saved.floating![0].root.text).toBe('Batch tree');
+    expect(saved.root.children.map((n) => n.id)).toContain(splitId);
+
+    // all-or-nothing still holds with tree ops in the batch
+    const before = readFileSync(file, 'utf8');
+    const failing = await client.callTool({
+      name: 'apply_ops',
+      arguments: {
+        map_id: mapId,
+        ops: [
+          { op: 'create_tree', markdown: '- Doomed', x: 0, y: 900 },
+          { op: 'detach_node', node_id: 'missing00000', x: 0, y: 0 },
+        ],
+      },
+    });
+    expect(failing.isError).toBe(true);
+    expect(readFileSync(file, 'utf8')).toBe(before);
+  });
+
   it('find_nodes searches one map or all maps with paths', async () => {
     const client = await createClient();
     const mk = async (title: string, markdown: string) => {

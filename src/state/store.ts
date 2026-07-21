@@ -202,7 +202,7 @@ export const useStore = create<StoreState>((set, get) => ({
   chatStreaming: false,
 
   loadMap(map) {
-    const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? []);
+    const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
     set({
       mapId: map.id,
       title: map.title,

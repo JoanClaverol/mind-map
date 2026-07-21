@@ -74,3 +74,61 @@ describe('migrateMapFile', () => {
     expect(migrateMapFile(base).relationships).toBeUndefined();
   });
 });
+
+describe('migrateMapFile v2 (floating trees + metadata)', () => {
+  const base = {
+    schemaVersion: SCHEMA_VERSION,
+    id: 'abc123',
+    title: 't',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    root: { id: 'r', text: 't', children: [] },
+  };
+
+  it('upgrades v1 files to v2 without inventing floating trees', () => {
+    const migrated = migrateMapFile({ ...base, schemaVersion: 1 });
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.floating).toBeUndefined();
+  });
+
+  it('keeps well-formed floating trees and drops malformed or colliding ones', () => {
+    const migrated = migrateMapFile({
+      ...base,
+      floating: [
+        { pos: { x: 10, y: 20 }, root: { id: 'f1', text: 'ok', children: [] } },
+        { pos: { x: 'bad', y: 0 }, root: { id: 'f2', text: 'bad pos', children: [] } },
+        { pos: { x: 0, y: 0 }, root: { id: 'r', text: 'collides with main root', children: [] } },
+        { pos: { x: 0, y: 0 } }, // no root
+        'garbage',
+      ],
+    });
+    expect(migrated.floating).toEqual([{ pos: { x: 10, y: 20 }, root: { id: 'f1', text: 'ok', children: [] } }]);
+  });
+
+  it('drops a non-array floating field and an emptied one', () => {
+    expect(migrateMapFile({ ...base, floating: 'nope' }).floating).toBeUndefined();
+    expect(migrateMapFile({ ...base, floating: ['bad'] }).floating).toBeUndefined();
+  });
+
+  it('sanitizes reserved metadata fields on main and floating nodes', () => {
+    const migrated = migrateMapFile({
+      ...base,
+      root: {
+        id: 'r',
+        text: 't',
+        color: 42,
+        icon: '💡',
+        note: null,
+        tags: ['ok', 7, 'also'],
+        children: [{ id: 'c', text: 'c', tags: 'not-an-array', children: [] }],
+      },
+      floating: [{ pos: { x: 0, y: 0 }, root: { id: 'f', text: 'f', color: 'sage', children: [] } }],
+    });
+    expect(migrated.root.color).toBeUndefined();
+    expect(migrated.root.icon).toBe('💡');
+    expect(migrated.root.note).toBeUndefined();
+    expect(migrated.root.tags).toEqual(['ok', 'also']);
+    expect(migrated.root.children[0].tags).toBeUndefined();
+    expect(migrated.floating![0].root.color).toBe('sage');
+  });
+});

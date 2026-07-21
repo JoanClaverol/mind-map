@@ -52,6 +52,17 @@ function lineAfter(rect: Rect, gap: number, vertical: boolean): DropIndicator {
       };
 }
 
+/** Min point-to-rect distance across all laid-out rects (world units). */
+export function distanceToNearestRect(layout: LayoutResult, wx: number, wy: number): number {
+  let best = Infinity;
+  for (const r of layout.rects.values()) {
+    const dx = Math.max(r.x - wx, 0, wx - (r.x + r.w));
+    const dy = Math.max(r.y - wy, 0, wy - (r.y + r.h));
+    best = Math.min(best, Math.hypot(dx, dy));
+  }
+  return best;
+}
+
 /**
  * Resolve where a dragged node would land for a cursor at world (wx, wy).
  *

@@ -240,3 +240,89 @@ describe('assignIds', () => {
     expect(new Set(ids).size).toBe(3);
   });
 });
+
+describe('floating tree ops', () => {
+  const withFloating = () => {
+    const doc = makeDoc();
+    applyDocOp(doc, {
+      type: 'create_tree',
+      root: branch('f', 'Float', [branch('f1', 'F-child')]),
+      pos: { x: 500, y: 100 },
+    });
+    return doc;
+  };
+
+  it('create_tree inserts the subtree and registers the floating entry', () => {
+    const doc = withFloating();
+    expect(doc.nodes.f.text).toBe('Float');
+    expect(doc.nodes.f.children).toEqual(['f1']);
+    expect(doc.floating).toEqual([{ rootId: 'f', pos: { x: 500, y: 100 } }]);
+  });
+
+  it('create_tree rejects id collisions without touching the doc', () => {
+    const doc = makeDoc();
+    const before = JSON.stringify(doc);
+    const r = applyDocOp(doc, { type: 'create_tree', root: branch('a', 'dup'), pos: { x: 0, y: 0 } });
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(doc)).toBe(before);
+  });
+
+  it('move_node on a floating root ATTACHES the tree and clears the floating entry', () => {
+    const doc = withFloating();
+    const r = applyDocOp(doc, { type: 'move_node', nodeId: 'f', newParentId: 'b', beforeSiblingId: null });
+    expect(r.ok).toBe(true);
+    expect(doc.nodes.b.children).toEqual(['f']);
+    expect(doc.floating).toEqual([]);
+    expect(doc.nodes.f.children).toEqual(['f1']); // subtree rides along
+  });
+
+  it('attach into the tree own subtree is rejected', () => {
+    const doc = withFloating();
+    const r = applyDocOp(doc, { type: 'move_node', nodeId: 'f', newParentId: 'f1', beforeSiblingId: null });
+    expect(r.ok).toBe(false);
+    expect(doc.floating).toHaveLength(1); // entry untouched
+  });
+
+  it('delete_node on a floating root deletes the whole tree and prunes its arrows', () => {
+    const doc = withFloating();
+    applyDocOp(doc, { type: 'add_relationship', relId: 'x1', fromId: 'f1', toId: 'b' });
+    const r = applyDocOp(doc, { type: 'delete_node', nodeId: 'f' });
+    expect(r).toEqual({ ok: true, select: 'root' });
+    expect(doc.nodes.f).toBeUndefined();
+    expect(doc.nodes.f1).toBeUndefined();
+    expect(doc.floating).toEqual([]);
+    expect(doc.relationships.find((rel) => rel.id === 'x1')).toBeUndefined();
+  });
+
+  it('detach_node splices a branch out into a floating tree', () => {
+    const doc = makeDoc();
+    const r = applyDocOp(doc, { type: 'detach_node', nodeId: 'a', pos: { x: 300, y: 300 } });
+    expect(r).toEqual({ ok: true, select: 'a' });
+    expect(doc.nodes.root.children).toEqual(['b', 'c']);
+    expect(doc.floating).toEqual([{ rootId: 'a', pos: { x: 300, y: 300 } }]);
+    expect(doc.nodes.a.children).toEqual(['a1']); // subtree intact
+  });
+
+  it('detach_node rejects the main root and already-floating roots', () => {
+    const doc = withFloating();
+    expect(applyDocOp(doc, { type: 'detach_node', nodeId: 'root', pos: { x: 0, y: 0 } }).ok).toBe(false);
+    expect(applyDocOp(doc, { type: 'detach_node', nodeId: 'f', pos: { x: 0, y: 0 } }).ok).toBe(false);
+  });
+
+  it('move_tree repositions; same pos and non-floating targets are rejected', () => {
+    const doc = withFloating();
+    expect(applyDocOp(doc, { type: 'move_tree', rootId: 'f', pos: { x: 600, y: 50 } }).ok).toBe(true);
+    expect(doc.floating[0].pos).toEqual({ x: 600, y: 50 });
+    expect(applyDocOp(doc, { type: 'move_tree', rootId: 'f', pos: { x: 600, y: 50 } }).ok).toBe(false);
+    expect(applyDocOp(doc, { type: 'move_tree', rootId: 'b', pos: { x: 0, y: 0 } }).ok).toBe(false);
+    expect(applyDocOp(doc, { type: 'move_tree', rootId: 'root', pos: { x: 0, y: 0 } }).ok).toBe(false);
+  });
+
+  it('main-root guards use the main-root wording, floating roots pass', () => {
+    const doc = withFloating();
+    const move = applyDocOp(doc, { type: 'move_node', nodeId: 'root', newParentId: 'b', beforeSiblingId: null });
+    expect(move).toEqual({ ok: false, reason: 'the main root cannot be moved' });
+    const del = applyDocOp(doc, { type: 'delete_node', nodeId: 'root' });
+    expect(del).toEqual({ ok: false, reason: 'the main root cannot be deleted' });
+  });
+});

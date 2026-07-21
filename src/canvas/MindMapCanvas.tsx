@@ -5,11 +5,12 @@ import { buildIndex, comboFromEvent, isPrintable, resolveCommand } from '../hotk
 import { DEFAULT_KEYMAP, loadKeymapOverrides, resolveKeymap } from '../hotkeys/keymap';
 import { layoutTree } from '../layout/layout';
 import { measureText } from '../layout/measure';
-import { subtreeIds, visibleIds } from '../model/doc';
-import { moveNode } from '../state/commands';
+import { floatingEntry, subtreeIds, visibleIds } from '../model/doc';
+import type { Position } from '../model/types';
+import { addFloatingTree, detachNode, moveNode, moveTree } from '../state/commands';
 import { runCommandById } from '../state/registry';
 import { useStore } from '../state/store';
-import { dropTargetsEqual, resolveDropTarget, type DropTarget } from './dnd';
+import { distanceToNearestRect, dropTargetsEqual, resolveDropTarget, type DropTarget } from './dnd';
 import { EdgeView } from './EdgeView';
 import { getLastLayout, setCanvasHost, setLastLayout } from './layoutCache';
 import { NodeEditor } from './NodeEditor';
@@ -17,18 +18,25 @@ import { NodeView } from './NodeView';
 import { RelationshipLabelEditor } from './RelationshipLabelEditor';
 import { RelationshipView } from './RelationshipView';
 import { relationshipGeometry } from './relationshipPath';
-import { fitToContent, revealRect, zoomAt } from './viewport';
+import { fitToContent, revealRect, screenToWorld, zoomAt } from './viewport';
 
 const DRAG_THRESHOLD_PX = 5;
+/** A drop farther than this from every node (world px) detaches the branch into a floating tree. */
+const DETACH_MARGIN = 48;
 
 interface DragRef {
   nodeId: string;
   startX: number;
   startY: number;
+  /** Cursor offset inside the dragged rect at press time, so drops preserve the grab point. */
+  grabDX: number;
+  grabDY: number;
   started: boolean;
   /** Drag state pushed to React at least once (drives dim/cursor even with no target). */
   published: boolean;
   target: DropTarget | null;
+  /** Where the dragged rect's top-left would land if released in the detach zone. */
+  detachAt: Position | null;
   onMove(ev: MouseEvent): void;
   onUp(): void;
 }
@@ -45,7 +53,9 @@ export function MindMapCanvas() {
   const hostRef = useRef<HTMLDivElement>(null);
 
   const dragRef = useRef<DragRef | null>(null);
-  const [drag, setDrag] = useState<{ nodeId: string; target: DropTarget | null } | null>(null);
+  const [drag, setDrag] = useState<{ nodeId: string; target: DropTarget | null; detachAt: Position | null } | null>(
+    null,
+  );
 
   const keymapIndex = useMemo(() => buildIndex(resolveKeymap(DEFAULT_KEYMAP, loadKeymapOverrides())), []);
 
@@ -63,6 +73,7 @@ export function MindMapCanvas() {
     () => (draggedId && doc ? new Set(subtreeIds(doc, draggedId)) : null),
     [draggedId, doc],
   );
+  const floatingRoots = useMemo(() => new Set(doc?.floating.map((f) => f.rootId)), [doc]);
 
   useEffect(() => {
     setCanvasHost(hostRef.current);
@@ -88,6 +99,11 @@ export function MindMapCanvas() {
     useStore.getState().select(nodeId);
     hostRef.current?.focus();
     cancelDrag(); // stale listeners from an interrupted gesture
+    const pressState = useStore.getState();
+    const pressRect = getLastLayout()?.rects.get(nodeId);
+    const pressWorld = hostRef.current
+      ? screenToWorld(pressState.viewport, hostRef.current.getBoundingClientRect(), e.clientX, e.clientY)
+      : null;
     const onMove = (ev: MouseEvent) => {
       const d = dragRef.current;
       const host = hostRef.current;
@@ -102,32 +118,54 @@ export function MindMapCanvas() {
       const s = useStore.getState();
       const currentLayout = getLastLayout();
       if (!s.doc || !currentLayout) return;
-      const hostRect = host.getBoundingClientRect();
-      const wx = (ev.clientX - hostRect.left - s.viewport.x) / s.viewport.zoom;
-      const wy = (ev.clientY - hostRect.top - s.viewport.y) / s.viewport.zoom;
+      const { x: wx, y: wy } = screenToWorld(s.viewport, host.getBoundingClientRect(), ev.clientX, ev.clientY);
       const target = resolveDropTarget(s.doc, currentLayout, d.nodeId, wx, wy);
-      const changed = !dropTargetsEqual(target, d.target);
+      // Far from every node = the detach zone (drop becomes a floating tree there).
+      // The main root never detaches; the margin keeps sloppy drops harmless.
+      let detachAt: Position | null = null;
+      if (!target && d.nodeId !== s.doc.rootId && distanceToNearestRect(currentLayout, wx, wy) >= DETACH_MARGIN) {
+        detachAt = { x: wx - d.grabDX, y: wy - d.grabDY };
+      }
+      const changed =
+        !dropTargetsEqual(target, d.target) ||
+        detachAt?.x !== d.detachAt?.x ||
+        detachAt?.y !== d.detachAt?.y;
       d.target = target;
+      d.detachAt = detachAt;
       if (!d.published || changed) {
         d.published = true;
-        setDrag({ nodeId: d.nodeId, target });
+        setDrag({ nodeId: d.nodeId, target, detachAt });
       }
     };
     const onUp = () => {
       const d = dragRef.current;
       cancelDrag();
-      if (d?.started && d.target) {
+      if (!d?.started) return;
+      const s = useStore.getState();
+      if (!s.doc) return;
+      if (d.target) {
+        // Onto a node: reparent — or, for a floating root, attach the whole tree.
         const { parentId, beforeSiblingId } = d.target;
-        useStore.getState().runCommand('moveNode', (draft) => moveNode(draft, d.nodeId, parentId, beforeSiblingId));
+        s.runCommand('moveNode', (draft) => moveNode(draft, d.nodeId, parentId, beforeSiblingId));
+      } else if (d.detachAt) {
+        const at = d.detachAt;
+        if (floatingEntry(s.doc, d.nodeId)) {
+          s.runCommand('moveTree', (draft) => moveTree(draft, d.nodeId, at));
+        } else {
+          s.runCommand('detachNode', (draft) => detachNode(draft, d.nodeId, at));
+        }
       }
     };
     dragRef.current = {
       nodeId,
       startX: e.clientX,
       startY: e.clientY,
+      grabDX: pressWorld && pressRect ? pressWorld.x - pressRect.x : 0,
+      grabDY: pressWorld && pressRect ? pressWorld.y - pressRect.y : 0,
       started: false,
       published: false,
       target: null,
+      detachAt: null,
       onMove,
       onUp,
     };
@@ -250,11 +288,24 @@ export function MindMapCanvas() {
     window.addEventListener('mouseup', onUp);
   };
 
+  // Double-click on empty canvas creates a floating tree right there.
+  const onHostDoubleClick = (e: React.MouseEvent) => {
+    const host = hostRef.current;
+    if (!host) return;
+    const s = useStore.getState();
+    if (!s.doc || s.editing) return;
+    const p = screenToWorld(s.viewport, host.getBoundingClientRect(), e.clientX, e.clientY);
+    s.runCommand('addFloatingTree', (draft) => addFloatingTree(draft, p));
+    useStore.getState().startEdit('replace');
+  };
+
   if (!doc || !layout) return <div className="canvas-host" ref={hostRef} />;
 
   const editingRect = editing ? layout.rects.get(editing.nodeId) : undefined;
   const indicator = drag?.target?.indicator ?? null;
   const intoRect = indicator?.kind === 'into' ? layout.rects.get(indicator.nodeId) : undefined;
+  // Ghost of the dragged node at its would-be floating position.
+  const detachRect = drag?.detachAt && draggedId ? layout.rects.get(draggedId) : undefined;
 
   // Live preview while drawing an arrow: source → the moving target cursor.
   const linkSourceId = linking?.sourceId ?? null;
@@ -275,6 +326,7 @@ export function MindMapCanvas() {
       tabIndex={0}
       onKeyDown={onKeyDown}
       onMouseDown={onMouseDown}
+      onDoubleClick={onHostDoubleClick}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -325,7 +377,7 @@ export function MindMapCanvas() {
                 rect={rect}
                 dir={layout.dirs.get(id) ?? 'right'}
                 selected={id === selectedId}
-                isRoot={id === doc.rootId}
+                isRoot={id === doc.rootId || floatingRoots.has(id)}
                 todoPending={pendingTodo.includes(id)}
                 dimmed={draggedSubtree?.has(id) ?? false}
                 linkSource={id === linkSourceId}
@@ -379,6 +431,16 @@ export function MindMapCanvas() {
               width={intoRect.w + 6}
               height={intoRect.h + 6}
               rx={10}
+            />
+          )}
+          {drag?.detachAt && detachRect && (
+            <rect
+              className="drop-detach"
+              x={drag.detachAt.x}
+              y={drag.detachAt.y}
+              width={detachRect.w}
+              height={detachRect.h}
+              rx={8}
             />
           )}
         </g>

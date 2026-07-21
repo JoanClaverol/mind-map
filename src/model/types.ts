@@ -1,4 +1,10 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
+
+/** A world-coordinate point on the canvas. */
+export interface Position {
+  x: number;
+  y: number;
+}
 
 /** How the tree is arranged on the canvas. */
 export type LayoutStyle = 'right' | 'balanced' | 'down' | 'timeline';
@@ -19,7 +25,21 @@ export interface FileNode {
   collapsed?: boolean;
   /** segon-cervell todo id once this node has been pushed. */
   todoId?: string;
+  // Reserved for phase 3 (node styling/annotations). Schema + round-trip only
+  // today: no UI or ops touch these yet, but normalize/denormalize carry them
+  // so a future edit is never stripped by autosave.
+  color?: string;
+  icon?: string;
+  note?: string;
+  tags?: string[];
   children: FileNode[];
+}
+
+/** A detached tree floating on the canvas, laid out as a right-tree at pos. */
+export interface FloatingTree {
+  /** World position of the tree root node's top-left corner. */
+  pos: Position;
+  root: FileNode;
 }
 
 export interface Viewport {
@@ -55,6 +75,8 @@ export interface MapFile {
   /** Free arrows linking nodes across trees. Omitted when empty so files stay minimal. */
   relationships?: Relationship[];
   root: FileNode;
+  /** Floating trees (XMind floating topics). Omitted when empty so files stay minimal. */
+  floating?: FloatingTree[];
 }
 
 export interface MapMeta {
@@ -67,9 +89,14 @@ export interface MapMeta {
   folder?: string;
 }
 
-/** Persists empty folders and the folder display order. Lives at maps/folders.json. */
+/**
+ * Persists empty folders and the folder display order. Lives at maps/folders.json.
+ * Versioned independently of the map schema so a map bump doesn't re-stamp it.
+ */
+export const FOLDERS_SCHEMA_VERSION = 1;
+
 export interface FoldersManifest {
-  schemaVersion: typeof SCHEMA_VERSION;
+  schemaVersion: typeof FOLDERS_SCHEMA_VERSION;
   folders: string[];
 }
 
@@ -102,6 +129,11 @@ export interface DocNode {
   text: string;
   collapsed: boolean;
   todoId?: string;
+  // Reserved phase-3 metadata — see FileNode.
+  color?: string;
+  icon?: string;
+  note?: string;
+  tags?: string[];
   children: string[];
 }
 
@@ -113,4 +145,6 @@ export interface Doc {
   nodes: Record<string, DocNode>;
   /** Always present (possibly empty) so relationship commands never null-check. */
   relationships: Relationship[];
+  /** Floating trees: root ids + world positions. Always present, like relationships. */
+  floating: Array<{ rootId: string; pos: Position }>;
 }

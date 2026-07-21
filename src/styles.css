@@ -77,6 +77,16 @@ body,
   pointer-events: none;
 }
 
+/* Ghost of a dragged branch about to detach into a floating tree. */
+.drop-detach {
+  fill: none;
+  stroke: var(--node-border);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
 .node-rect {
   fill: var(--node-bg);
   stroke: var(--node-border);

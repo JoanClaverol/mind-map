@@ -1,5 +1,5 @@
-import { newId, subtreeIds } from './doc';
-import type { Doc, FileNode } from './types';
+import { floatingEntry, newId, subtreeIds } from './doc';
+import type { Doc, DocNode, FileNode, Position } from './types';
 
 /**
  * Map operations: the shared vocabulary for surgical edits, used by both the
@@ -18,7 +18,10 @@ export type MapOp =
   | { type: 'delete_node'; nodeId: string }
   | { type: 'add_relationship'; relId: string; fromId: string; toId: string; label?: string }
   | { type: 'edit_relationship'; relId: string; label: string }
-  | { type: 'delete_relationship'; relId: string };
+  | { type: 'delete_relationship'; relId: string }
+  | { type: 'create_tree'; root: FileNode; pos: Position } // root carries FINAL ids
+  | { type: 'move_tree'; rootId: string; pos: Position }
+  | { type: 'detach_node'; nodeId: string; pos: Position };
 
 /**
  * `select` is a suggested selection (used by commands.ts; ignored by live-sync).
@@ -56,14 +59,17 @@ export function applyDocOp(doc: Doc, op: MapOp): OpResult {
       return editRelationship(doc, op.relId, op.label);
     case 'delete_relationship':
       return deleteRelationship(doc, op.relId);
+    case 'create_tree':
+      return createTree(doc, op.root, op.pos);
+    case 'move_tree':
+      return moveTree(doc, op.rootId, op.pos);
+    case 'detach_node':
+      return detachNode(doc, op.nodeId, op.pos);
   }
 }
 
-function addNodes(doc: Doc, parentId: string, branches: FileNode[]): OpResult {
-  const parent = doc.nodes[parentId];
-  if (!parent) return { ok: false, reason: `parent node ${parentId} not found` };
-  if (branches.length === 0) return { ok: false, reason: 'no nodes to add' };
-  // Validate every incoming id before touching the doc.
+/** Reject any incoming id that collides with the doc or repeats within the branches. */
+function checkNewIds(doc: Doc, branches: FileNode[]): string | null {
   const seen = new Set<string>();
   const check = (n: FileNode): string | null => {
     if (doc.nodes[n.id]) return `node id ${n.id} already exists in the map`;
@@ -77,15 +83,52 @@ function addNodes(doc: Doc, parentId: string, branches: FileNode[]): OpResult {
   };
   for (const branch of branches) {
     const err = check(branch);
-    if (err) return { ok: false, reason: err };
+    if (err) return err;
   }
-  const insert = (branch: FileNode, intoId: string): void => {
-    const node = { id: branch.id, text: branch.text, collapsed: branch.collapsed ?? false, children: [] as string[] };
-    doc.nodes[branch.id] = branch.todoId ? { ...node, todoId: branch.todoId } : node;
-    doc.nodes[intoId].children.push(branch.id);
-    for (const child of branch.children) insert(child, branch.id);
+  return null;
+}
+
+/** Insert a FileNode subtree into doc.nodes under intoId (or as a detached root when intoId is null). */
+function insertBranch(doc: Doc, branch: FileNode, intoId: string | null): void {
+  const node: DocNode = {
+    id: branch.id,
+    text: branch.text,
+    collapsed: branch.collapsed ?? false,
+    children: [],
   };
-  for (const branch of branches) insert(branch, parentId);
+  if (branch.todoId) node.todoId = branch.todoId;
+  if (branch.color) node.color = branch.color;
+  if (branch.icon) node.icon = branch.icon;
+  if (branch.note) node.note = branch.note;
+  if (branch.tags?.length) node.tags = [...branch.tags];
+  doc.nodes[branch.id] = node;
+  if (intoId !== null) doc.nodes[intoId].children.push(branch.id);
+  for (const child of branch.children) insertBranch(doc, child, branch.id);
+}
+
+/** Remove a subtree from doc.nodes and prune relationships touching it. */
+function removeSubtree(doc: Doc, rootId: string): void {
+  const removed = new Set<string>();
+  const stack = [rootId];
+  while (stack.length) {
+    const id = stack.pop()!;
+    removed.add(id);
+    stack.push(...doc.nodes[id].children);
+    delete doc.nodes[id];
+  }
+  // Drop arrows touching any deleted node; undo restores them with the nodes.
+  if (doc.relationships.some((r) => removed.has(r.from) || removed.has(r.to))) {
+    doc.relationships = doc.relationships.filter((r) => !removed.has(r.from) && !removed.has(r.to));
+  }
+}
+
+function addNodes(doc: Doc, parentId: string, branches: FileNode[]): OpResult {
+  const parent = doc.nodes[parentId];
+  if (!parent) return { ok: false, reason: `parent node ${parentId} not found` };
+  if (branches.length === 0) return { ok: false, reason: 'no nodes to add' };
+  const err = checkNewIds(doc, branches);
+  if (err) return { ok: false, reason: err };
+  for (const branch of branches) insertBranch(doc, branch, parentId);
   parent.collapsed = false;
   return { ok: true, select: branches[0].id };
 }
@@ -101,9 +144,10 @@ function editNode(doc: Doc, nodeId: string, text: string): OpResult {
  * Move a node (with its subtree) under newParentId, inserted before
  * beforeSiblingId (null = append at end). Anchor-based so same-parent moves
  * have no index-shift bugs: the insertion index is computed after removal.
+ * Moving a floating tree's root ATTACHES the whole tree under the new parent.
  */
 function moveNode(doc: Doc, nodeId: string, newParentId: string, beforeSiblingId: string | null): OpResult {
-  if (nodeId === doc.rootId) return { ok: false, reason: 'the root cannot be moved' };
+  if (nodeId === doc.rootId) return { ok: false, reason: 'the main root cannot be moved' };
   if (!doc.nodes[nodeId]) return { ok: false, reason: `node ${nodeId} not found` };
   if (!doc.nodes[newParentId]) return { ok: false, reason: `new parent ${newParentId} not found` };
   if (subtreeIds(doc, nodeId).includes(newParentId)) {
@@ -114,42 +158,76 @@ function moveNode(doc: Doc, nodeId: string, newParentId: string, beforeSiblingId
   if (beforeSiblingId !== null && !newParent.children.includes(beforeSiblingId)) {
     return { ok: false, reason: `before sibling ${beforeSiblingId} is not a child of the new parent` };
   }
-  const oldParentId = findParent(doc, nodeId);
-  if (!oldParentId) return { ok: false, reason: `node ${nodeId} has no parent` };
-  const oldParent = doc.nodes[oldParentId];
-  const oldIdx = oldParent.children.indexOf(nodeId);
-  if (oldParentId === newParentId && beforeSiblingId === (oldParent.children[oldIdx + 1] ?? null)) {
-    return { ok: false, reason: 'node is already in that position' }; // also covers append-when-already-last
+  const floating = floatingEntry(doc, nodeId);
+  if (floating) {
+    // Attach: the tree stops floating and nests under the new parent.
+    doc.floating.splice(doc.floating.indexOf(floating), 1);
+  } else {
+    const oldParentId = findParent(doc, nodeId);
+    if (!oldParentId) return { ok: false, reason: `node ${nodeId} has no parent` };
+    const oldParent = doc.nodes[oldParentId];
+    const oldIdx = oldParent.children.indexOf(nodeId);
+    if (oldParentId === newParentId && beforeSiblingId === (oldParent.children[oldIdx + 1] ?? null)) {
+      return { ok: false, reason: 'node is already in that position' }; // also covers append-when-already-last
+    }
+    oldParent.children.splice(oldIdx, 1);
   }
-  oldParent.children.splice(oldIdx, 1);
   const idx = beforeSiblingId === null ? newParent.children.length : newParent.children.indexOf(beforeSiblingId);
   newParent.children.splice(idx, 0, nodeId);
   newParent.collapsed = false;
   return { ok: true, select: nodeId };
 }
 
+/** Delete a subtree. On a floating tree's root, deletes that whole tree. */
 function deleteNode(doc: Doc, nodeId: string): OpResult {
-  if (nodeId === doc.rootId) return { ok: false, reason: 'the root cannot be deleted' };
+  if (nodeId === doc.rootId) return { ok: false, reason: 'the main root cannot be deleted' };
   if (!doc.nodes[nodeId]) return { ok: false, reason: `node ${nodeId} not found` };
+  const floating = floatingEntry(doc, nodeId);
+  if (floating) {
+    doc.floating.splice(doc.floating.indexOf(floating), 1);
+    removeSubtree(doc, nodeId);
+    return { ok: true, select: doc.rootId };
+  }
   const parentId = findParent(doc, nodeId);
   if (!parentId) return { ok: false, reason: `node ${nodeId} has no parent` };
   const parent = doc.nodes[parentId];
   const idx = parent.children.indexOf(nodeId);
   parent.children.splice(idx, 1);
-  const removed = new Set<string>();
-  const stack = [nodeId];
-  while (stack.length) {
-    const id = stack.pop()!;
-    removed.add(id);
-    stack.push(...doc.nodes[id].children);
-    delete doc.nodes[id];
-  }
-  // Drop arrows touching any deleted node; undo restores them with the nodes.
-  if (doc.relationships.some((r) => removed.has(r.from) || removed.has(r.to))) {
-    doc.relationships = doc.relationships.filter((r) => !removed.has(r.from) && !removed.has(r.to));
-  }
+  removeSubtree(doc, nodeId);
   const next = parent.children[Math.min(idx, parent.children.length - 1)] ?? parentId;
   return { ok: true, select: next };
+}
+
+function createTree(doc: Doc, root: FileNode, pos: Position): OpResult {
+  const err = checkNewIds(doc, [root]);
+  if (err) return { ok: false, reason: err };
+  insertBranch(doc, root, null);
+  doc.floating.push({ rootId: root.id, pos: { x: pos.x, y: pos.y } });
+  return { ok: true, select: root.id };
+}
+
+function moveTree(doc: Doc, rootId: string, pos: Position): OpResult {
+  if (rootId === doc.rootId) return { ok: false, reason: 'the main root cannot be repositioned' };
+  const entry = floatingEntry(doc, rootId);
+  if (!entry) return { ok: false, reason: `node ${rootId} is not a floating tree root` };
+  if (entry.pos.x === pos.x && entry.pos.y === pos.y) {
+    return { ok: false, reason: 'tree is already at that position' }; // keeps history clean
+  }
+  entry.pos = { x: pos.x, y: pos.y };
+  return { ok: true, select: rootId };
+}
+
+/** Splice a branch out of its parent and let it float at pos. */
+function detachNode(doc: Doc, nodeId: string, pos: Position): OpResult {
+  if (nodeId === doc.rootId) return { ok: false, reason: 'the main root cannot be detached' };
+  if (!doc.nodes[nodeId]) return { ok: false, reason: `node ${nodeId} not found` };
+  if (floatingEntry(doc, nodeId)) return { ok: false, reason: `node ${nodeId} is already a floating tree` };
+  const parentId = findParent(doc, nodeId);
+  if (!parentId) return { ok: false, reason: `node ${nodeId} has no parent` };
+  const parent = doc.nodes[parentId];
+  parent.children.splice(parent.children.indexOf(nodeId), 1);
+  doc.floating.push({ rootId: nodeId, pos: { x: pos.x, y: pos.y } });
+  return { ok: true, select: nodeId };
 }
 
 /**

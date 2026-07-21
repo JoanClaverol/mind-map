@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_LAYOUT, layoutTree } from '../layout/layout';
+import { DEFAULT_LAYOUT, layoutTree, type LayoutResult } from '../layout/layout';
 import { normalize } from '../model/doc';
-import { resolveDropTarget } from './dnd';
+import { distanceToNearestRect, resolveDropTarget } from './dnd';
 
 // Real layout, fixed sizes: geometry in these tests is the real geometry.
 const SIZE = { w: 100, h: 24 };
@@ -211,5 +211,21 @@ describe('resolveDropTarget — balanced left side', () => {
     expect(t).toMatchObject({ parentId: 'root', beforeSiblingId: 'c', indicator: { kind: 'line' } });
     const line = t!.indicator as { x1: number; y1: number; x2: number; y2: number };
     expect(line.y1).toBe(line.y2);
+  });
+});
+
+describe('distanceToNearestRect', () => {
+  const layout = {
+    rects: new Map([
+      ['a', { x: 0, y: 0, w: 100, h: 30 }],
+      ['b', { x: 200, y: 0, w: 100, h: 30 }],
+    ]),
+  } as unknown as LayoutResult;
+
+  it('is zero inside a rect and measures to the nearest edge outside', () => {
+    expect(distanceToNearestRect(layout, 50, 15)).toBe(0);
+    expect(distanceToNearestRect(layout, 150, 15)).toBe(50); // midway between a and b
+    expect(distanceToNearestRect(layout, 100, 70)).toBe(40); // straight below a
+    expect(distanceToNearestRect(layout, 350, 15)).toBe(50); // right of b
   });
 });

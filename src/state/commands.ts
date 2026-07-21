@@ -1,7 +1,7 @@
 import type { Draft } from 'immer';
 import { newId } from '../model/doc';
 import { applyDocOp, assignIds } from '../model/ops';
-import type { Doc, DocNode, FileNode, LayoutStyle } from '../model/types';
+import type { Doc, DocNode, FileNode, LayoutStyle, Position } from '../model/types';
 
 /**
  * Doc commands: pure mutations over an Immer draft. The store's executor wraps
@@ -101,6 +101,25 @@ export function moveNode(
 ): CommandResult {
   const r = applyDocOp(draft, { type: 'move_node', nodeId, newParentId, beforeSiblingId });
   return r.ok ? { select: r.select } : {};
+}
+
+/** Create a blank floating tree at pos (world coords) and select it for editing. */
+export function addFloatingTree(draft: Draft<Doc>, pos: Position): CommandResult {
+  const id = newId();
+  const r = applyDocOp(draft, { type: 'create_tree', root: { id, text: '', children: [] }, pos });
+  return r.ok ? { select: id } : {};
+}
+
+/** Splice a branch out of its parent and let it float at pos. */
+export function detachNode(draft: Draft<Doc>, nodeId: string, pos: Position): CommandResult {
+  const r = applyDocOp(draft, { type: 'detach_node', nodeId, pos });
+  return r.ok ? { select: r.select } : {};
+}
+
+/** Reposition a floating tree. */
+export function moveTree(draft: Draft<Doc>, rootId: string, pos: Position): CommandResult {
+  const r = applyDocOp(draft, { type: 'move_tree', rootId, pos });
+  return r.ok ? { select: rootId } : {};
 }
 
 export function setLayoutStyle(draft: Draft<Doc>, style: LayoutStyle): CommandResult {

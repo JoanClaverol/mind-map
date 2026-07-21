@@ -87,7 +87,8 @@ The MCP server (guide: [MCP.md](MCP.md)) exposes the full editing surface:
 | Read | `read_map`, `read_map_markdown` (id-annotated + arrows), `get_subtree`, `list_maps` |
 | Search | `find_nodes` — locate ideas across one or **all** maps without reading them whole |
 | Edit nodes | `add_nodes`, `edit_node`, `move_node`, `delete_node` |
-| Connect ideas | `add_relationship`, `edit_relationship`, `delete_relationship` — labeled arrows between any two nodes |
+| Floating trees | `create_tree`, `detach_node` — detached trees on the canvas; `move_node` on a tree root attaches it |
+| Connect ideas | `add_relationship`, `edit_relationship`, `delete_relationship` — labeled arrows between any two nodes, across trees |
 | Batch | `apply_ops` — up to 50 edits, atomic on disk, **one undo step** for you |
 | Create | `create_map_from_outline`, `generate_map` (only with an OpenRouter key) |
 
@@ -97,7 +98,9 @@ The MCP server (guide: [MCP.md](MCP.md)) exposes the full editing surface:
 - **Keyboard-first editing** — add, navigate, reorder, and restructure without the mouse.
 - **Four layouts** — logic chart, balanced map, org chart, and a Now/Next/Later roadmap;
   cycle per-map with `⇧S`.
-- **Relationship arrows** — free directional links between any two nodes, across branches.
+- **Floating trees** — several root trees on one canvas (XMind floating topics): brainstorm
+  clusters side by side, connect them with arrows, attach/detach branches by dragging.
+- **Relationship arrows** — free directional links between any two nodes, across trees.
 - **Inline markdown** in node text: bold, italic, code, strike, highlight, links.
 - **Markdown interop** — copy a branch as a nested list; paste any outline (Obsidian, Notes,
   XMind exports) as a subtree.
@@ -122,6 +125,7 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `⇧J` / `⇧K` | Move node down / up on screen (reorder; nest/un-nest in org chart) |
 | `⇧L` / `⇧H` | Move node right / left on screen (nest/un-nest; reorder in org chart) |
 | `⇧S` | Cycle layout structure: right tree → balanced map → org chart → roadmap (per map, undoable) |
+| `⇧N` | New **floating tree** at the view center (a detached tree on the same canvas — connect it later with arrows, or drag it onto a node to attach) |
 | `⇧R` | Record a voice note → transcript becomes nodes under the selection (press again to stop, Esc to discard) |
 | `/` | Collapse / expand branch |
 | `⇧A` | Draw an **arrow** (relationship) from the selected node — move (`hjkl`/click) to a target, `Enter` to connect, `Esc` to cancel; the label editor opens on connect |
@@ -135,14 +139,18 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `?` | Keyboard cheatsheet — every bound command, generated from the live keymap (works in the gallery too) |
 
 **Mouse:** scroll to pan, pinch (or `⌃`+scroll) to zoom at cursor, drag empty canvas to pan,
-double-click a node to edit. **Drag a node** to restructure: the middle of another node nests
-the branch inside it (expands collapsed targets), the top/bottom edge inserts it between
-siblings (a blue line shows where). `Esc` cancels a drag. **Click an arrow** (or its label) to
-select it — `Enter` edits its label, `Delete`/`Backspace` removes it, `Esc` deselects.
+double-click a node to edit, **double-click empty canvas to create a floating tree right
+there**. **Drag a node** to restructure: the middle of another node nests the branch inside
+it (expands collapsed targets), the top/bottom edge inserts it between siblings (a blue line
+shows where), and dropping it on **empty canvas** (beyond ~48px of any node — a dashed ghost
+shows the spot) **detaches it into a floating tree**. Drag a floating tree's root onto a node
+to attach the whole tree, or to empty canvas to reposition it. `Esc` cancels a drag.
+**Click an arrow** (or its label) to select it — `Enter` edits its label, `Delete`/`Backspace`
+removes it, `Esc` deselects.
 
-> Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧R` records, `⇧S` switches structure, and `⇧T`
-> saves a note, typing a *capital* A/H/J/K/L/R/S/T won't trigger type-to-edit — press `Space`
-> to edit instead, or unbind them via `localStorage.keymap`.
+> Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧N` adds a floating tree, `⇧R` records, `⇧S`
+> switches structure, and `⇧T` saves a note, typing a *capital* A/H/J/K/L/N/R/S/T won't
+> trigger type-to-edit — press `Space` to edit instead, or unbind them via `localStorage.keymap`.
 
 ## Gallery
 

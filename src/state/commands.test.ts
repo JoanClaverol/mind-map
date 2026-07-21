@@ -266,3 +266,41 @@ describe('commands', () => {
     expect(doc).toEqual(final);
   });
 });
+
+describe('floating tree commands', () => {
+  it('addFloatingTree creates a blank selected tree; undo removes it cleanly', () => {
+    const doc = normalize({ id: 'root', text: 'r', children: [] });
+    const { next, patches, inversePatches, result } = execute(doc, (d) =>
+      cmd.addFloatingTree(d, { x: 100, y: 200 }),
+    );
+    const id = result.select!;
+    expect(next.nodes[id].text).toBe('');
+    expect(next.floating).toEqual([{ rootId: id, pos: { x: 100, y: 200 } }]);
+    expect(patches.length).toBeGreaterThan(0);
+    const undone = applyPatches(next, inversePatches);
+    expect(undone).toEqual(doc);
+  });
+
+  it('deleteSubtree on a floating root deletes the tree and selects the main root', () => {
+    let doc = normalize({ id: 'root', text: 'r', children: [] });
+    const created = execute(doc, (d) => cmd.addFloatingTree(d, { x: 0, y: 0 }));
+    doc = created.next;
+    const id = created.result.select!;
+    const { next, result } = execute(doc, (d) => cmd.deleteSubtree(d, id));
+    expect(result.select).toBe('root');
+    expect(next.nodes[id]).toBeUndefined();
+    expect(next.floating).toEqual([]);
+  });
+
+  it('moveTree repositions with undo, and no-ops on identical positions', () => {
+    let doc = normalize({ id: 'root', text: 'r', children: [] });
+    const created = execute(doc, (d) => cmd.addFloatingTree(d, { x: 0, y: 0 }));
+    doc = created.next;
+    const id = created.result.select!;
+    const moved = execute(doc, (d) => cmd.moveTree(d, id, { x: 50, y: 60 }));
+    expect(moved.next.floating[0].pos).toEqual({ x: 50, y: 60 });
+    expect(applyPatches(moved.next, moved.inversePatches).floating[0].pos).toEqual({ x: 0, y: 0 });
+    const noop = execute(moved.next, (d) => cmd.moveTree(d, id, { x: 50, y: 60 }));
+    expect(noop.patches).toHaveLength(0);
+  });
+});

@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { denormalize, normalize, subtreeIds } from '../src/model/doc';
+import { denormalize, normalize, serializeFloating, subtreeIds } from '../src/model/doc';
 import { branchToMarkdown, markdownToBranches } from '../src/model/markdown';
 import { applyDocOp, assignIds, type MapOp } from '../src/model/ops';
 import { SCHEMA_VERSION, type Doc, type FileNode, type MapFile } from '../src/model/types';
@@ -47,18 +47,32 @@ async function mutateMap(
   if (!storage.isValidId(mapId)) return { error: 'invalid map id' };
   const map = await storage.readMap(mapId);
   if (!map) return { error: 'map not found' };
-  const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? []);
+  const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
   for (let i = 0; i < ops.length; i++) {
     const result = applyDocOp(doc, ops[i]);
     if (!result.ok) return { error: result.reason, failedIndex: i };
   }
   const updated: MapFile = { ...map, root: denormalize(doc), updatedAt: nowIso() };
-  // Relationship changes/pruning flow through; omit when empty to keep files minimal.
+  // Relationship/floating changes flow through; omit when empty to keep files minimal.
   if (doc.relationships.length) updated.relationships = doc.relationships;
   else delete updated.relationships;
+  const floating = serializeFloating(doc);
+  if (floating) updated.floating = floating;
+  else delete updated.floating;
   await storage.writeMap(updated);
   publish({ kind: 'map-ops', mapId, ops });
   return { map: updated };
+}
+
+/**
+ * Where a new floating tree lands when the client gives no position. The
+ * server has no layout, so this is a heuristic below the existing trees —
+ * advisory only; the user drags trees where they want them.
+ */
+function defaultTreePos(map: MapFile, index = 0): { x: number; y: number } {
+  const ys = (map.floating ?? []).map((f) => f.pos.y);
+  const base = ys.length ? Math.max(...ys) + 200 : 300;
+  return { x: 0, y: base + 200 * index };
 }
 
 /** Render inserted branches as an outline annotated with their new ids. */
@@ -105,7 +119,7 @@ async function buildProjectContext(): Promise<string> {
   const schema = `MapFile schema version ${SCHEMA_VERSION}:
 \`\`\`ts
 interface MapFile {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   title: string;
   createdAt: string;
@@ -114,6 +128,7 @@ interface MapFile {
   pinned?: boolean;
   relationships?: Array<{ id: string; from: string; to: string; label?: string }>;
   root: FileNode;
+  floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
 }
 
 interface FileNode {
@@ -121,6 +136,10 @@ interface FileNode {
   text: string;
   collapsed?: boolean;
   todoId?: string;
+  color?: string;   // reserved
+  icon?: string;    // reserved
+  note?: string;    // reserved
+  tags?: string[];  // reserved
   children: FileNode[];
 }
 \`\`\`
@@ -180,10 +199,16 @@ export function createMcpServer(): McpServer {
       if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
-      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? []);
+      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
       const markdown = branchToMarkdown(doc, map.root.id, { ids: true });
+      const floatingBlocks = doc.floating.map((f) => branchToMarkdown(doc, f.rootId, { ids: true }));
+      const floatingSection = floatingBlocks.length ? `\n\n## Floating trees\n${floatingBlocks.join('\n\n')}` : '';
       const rels = relationshipsSection(doc);
-      return { content: [{ type: 'text', text: `# ${map.title}\n\n${markdown}${rels ? `\n\n${rels}` : ''}` }] };
+      return {
+        content: [
+          { type: 'text', text: `# ${map.title}\n\n${markdown}${floatingSection}${rels ? `\n\n${rels}` : ''}` },
+        ],
+      };
     },
   );
 
@@ -202,7 +227,7 @@ export function createMcpServer(): McpServer {
       if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
-      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? []);
+      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
       if (!doc.nodes[args.node_id]) return errorResult(`node ${args.node_id} not found`);
       const markdown = branchToMarkdown(doc, args.node_id, { ids: true, maxDepth: args.depth });
       const rels = relationshipsSection(doc, new Set(subtreeIds(doc, args.node_id)));
@@ -251,6 +276,12 @@ export function createMcpServer(): McpServer {
         if (walk(map.root, [])) {
           truncated = true;
           break outer;
+        }
+        for (const f of map.floating ?? []) {
+          if (walk(f.root, [])) {
+            truncated = true;
+            break outer;
+          }
         }
       }
       if (hits.length === 0) return { content: [{ type: 'text', text: 'No matches.' }] };
@@ -302,7 +333,7 @@ export function createMcpServer(): McpServer {
     'move_node',
     {
       description:
-        'Moves a node (with its subtree) under a new parent. Omit before_sibling_id to append at the end, or pass a child of the new parent to insert before it. The edit appears live in an open browser tab and is undoable there.',
+        'Moves a node (with its subtree) under a new parent. Omit before_sibling_id to append at the end, or pass a child of the new parent to insert before it. Passing a floating tree\'s root ATTACHES that whole tree under the new parent. The edit appears live in an open browser tab and is undoable there.',
       inputSchema: z.object({
         map_id: z.string().describe('The map id'),
         node_id: z.string().describe('Id of the node to move'),
@@ -328,7 +359,7 @@ export function createMcpServer(): McpServer {
     'delete_node',
     {
       description:
-        'Deletes a node and its whole subtree (the root cannot be deleted). Relationships touching deleted nodes are pruned. The edit appears live in an open browser tab and is undoable there.',
+        'Deletes a node and its whole subtree; a floating tree\'s root deletes that whole tree. The main root cannot be deleted. Relationships touching deleted nodes are pruned. The edit appears live in an open browser tab and is undoable there.',
       inputSchema: z.object({
         map_id: z.string().describe('The map id'),
         node_id: z.string().describe('Id of the node to delete'),
@@ -338,6 +369,75 @@ export function createMcpServer(): McpServer {
       const r = await mutateMap(args.map_id, [{ type: 'delete_node', nodeId: args.node_id }]);
       if ('error' in r) return errorResult(r.error);
       return { content: [{ type: 'text', text: `Deleted node ${args.node_id} and its subtree` }] };
+    },
+  );
+
+  server.registerTool(
+    'create_tree',
+    {
+      description:
+        'Creates a floating tree on the canvas — a detached tree alongside the main one, for ideas that do not (yet) belong anywhere. The markdown must have exactly ONE top-level bullet (it becomes the tree root). Connect it later with relationship arrows, or attach it under a node via move_node on its root. Appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        markdown: z.string().describe('Markdown bullet outline with exactly one top-level bullet'),
+        x: z.number().optional().describe('Canvas x for the tree root; omit to auto-place below existing trees'),
+        y: z.number().optional().describe('Canvas y for the tree root; omit to auto-place'),
+      }),
+    },
+    async (args) => {
+      const branches = markdownToBranches(args.markdown);
+      if (branches.length === 0) return errorResult('markdown produced no nodes');
+      if (branches.length > 1) {
+        return errorResult(
+          'markdown has multiple top-level bullets — wrap them under a single bullet, or call create_tree once per tree',
+        );
+      }
+      const root = branches[0];
+      assignIds(root);
+      let pos: { x: number; y: number };
+      if (args.x !== undefined && args.y !== undefined) {
+        pos = { x: args.x, y: args.y };
+      } else {
+        if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
+        const map = await storage.readMap(args.map_id);
+        if (!map) return errorResult('map not found');
+        pos = defaultTreePos(map);
+      }
+      const r = await mutateMap(args.map_id, [{ type: 'create_tree', root, pos }]);
+      if ('error' in r) return errorResult(r.error);
+      return {
+        content: [{ type: 'text', text: `Created floating tree at (${pos.x}, ${pos.y}):\n${outlineWithIds([root])}` }],
+      };
+    },
+  );
+
+  server.registerTool(
+    'detach_node',
+    {
+      description:
+        'Detaches a node (with its whole subtree) from its parent so it becomes a floating tree on the canvas. The main root and existing floating roots cannot be detached. Appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        node_id: z.string().describe('Id of the node to detach'),
+        x: z.number().optional().describe('Canvas x for the detached tree; omit to auto-place'),
+        y: z.number().optional().describe('Canvas y; omit to auto-place'),
+      }),
+    },
+    async (args) => {
+      let pos: { x: number; y: number };
+      if (args.x !== undefined && args.y !== undefined) {
+        pos = { x: args.x, y: args.y };
+      } else {
+        if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
+        const map = await storage.readMap(args.map_id);
+        if (!map) return errorResult('map not found');
+        pos = defaultTreePos(map);
+      }
+      const r = await mutateMap(args.map_id, [{ type: 'detach_node', nodeId: args.node_id, pos }]);
+      if ('error' in r) return errorResult(r.error);
+      return {
+        content: [{ type: 'text', text: `Detached ${args.node_id} into a floating tree at (${pos.x}, ${pos.y})` }],
+      };
     },
   );
 
@@ -422,6 +522,13 @@ export function createMcpServer(): McpServer {
     }),
     z.object({ op: z.literal('edit_relationship'), relationship_id: z.string(), label: z.string() }),
     z.object({ op: z.literal('delete_relationship'), relationship_id: z.string() }),
+    z.object({
+      op: z.literal('create_tree'),
+      markdown: z.string().describe('Outline with exactly one top-level bullet'),
+      x: z.number().optional(),
+      y: z.number().optional(),
+    }),
+    z.object({ op: z.literal('detach_node'), node_id: z.string(), x: z.number().optional(), y: z.number().optional() }),
   ]);
 
   server.registerTool(
@@ -437,6 +544,18 @@ export function createMcpServer(): McpServer {
     async (args) => {
       const ops: MapOp[] = [];
       const summaries: string[] = [];
+      // Pre-read once when any tree op needs an auto position (mutateMap re-reads).
+      let mapForPos: MapFile | null = null;
+      let autoPlaced = 0;
+      const nextPos = async (x?: number, y?: number) => {
+        if (x !== undefined && y !== undefined) return { x, y };
+        if (!mapForPos) {
+          if (!storage.isValidId(args.map_id)) return null;
+          mapForPos = await storage.readMap(args.map_id);
+          if (!mapForPos) return null;
+        }
+        return defaultTreePos(mapForPos, autoPlaced++);
+      };
       for (let i = 0; i < args.ops.length; i++) {
         const item = args.ops[i];
         switch (item.op) {
@@ -481,6 +600,31 @@ export function createMcpServer(): McpServer {
             ops.push({ type: 'delete_relationship', relId: item.relationship_id });
             summaries.push(`[${i}] delete_relationship ${item.relationship_id}`);
             break;
+          case 'create_tree': {
+            const branches = markdownToBranches(item.markdown);
+            if (branches.length === 0) {
+              return errorResult(`op ${i} (create_tree): markdown produced no nodes — no changes were applied`);
+            }
+            if (branches.length > 1) {
+              return errorResult(
+                `op ${i} (create_tree): markdown has multiple top-level bullets — no changes were applied`,
+              );
+            }
+            const root = branches[0];
+            assignIds(root);
+            const pos = await nextPos(item.x, item.y);
+            if (!pos) return errorResult('map not found');
+            ops.push({ type: 'create_tree', root, pos });
+            summaries.push(`[${i}] create_tree at (${pos.x}, ${pos.y}):\n${outlineWithIds([root], 1)}`);
+            break;
+          }
+          case 'detach_node': {
+            const pos = await nextPos(item.x, item.y);
+            if (!pos) return errorResult('map not found');
+            ops.push({ type: 'detach_node', nodeId: item.node_id, pos });
+            summaries.push(`[${i}] detach_node ${item.node_id} to (${pos.x}, ${pos.y})`);
+            break;
+          }
         }
       }
       const r = await mutateMap(args.map_id, ops);

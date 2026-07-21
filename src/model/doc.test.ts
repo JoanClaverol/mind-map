@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildParentMap, denormalize, normalize, subtreeIds, visibleIds } from './doc';
+import { buildParentMap, denormalize, floatingEntry, isRootId, normalize, serializeFloating, subtreeIds, visibleIds } from './doc';
 import type { FileNode } from './types';
 
 const tree: FileNode = {
@@ -55,5 +55,62 @@ describe('normalize/denormalize', () => {
       { id: 'r4', from: 'nope', to: 'b' }, // missing source
     ];
     expect(normalize(tree, 'right', rels).relationships).toEqual([{ id: 'r1', from: 'a', to: 'b' }]);
+  });
+});
+
+describe('floating trees', () => {
+  const floating = [
+    {
+      pos: { x: 500, y: 100 },
+      root: {
+        id: 'f',
+        text: 'Float',
+        color: 'sage',
+        tags: ['idea'],
+        children: [{ id: 'f1', text: 'Child', children: [] }],
+      },
+    },
+  ];
+
+  it('normalize merges floating nodes and builds doc.floating', () => {
+    const doc = normalize(tree, 'right', [], floating);
+    expect(doc.nodes.f.text).toBe('Float');
+    expect(doc.nodes.f.color).toBe('sage');
+    expect(doc.nodes.f1.text).toBe('Child');
+    expect(doc.floating).toEqual([{ rootId: 'f', pos: { x: 500, y: 100 } }]);
+  });
+
+  it('normalize skips a floating tree whose root id collides', () => {
+    const doc = normalize(tree, 'right', [], [{ pos: { x: 0, y: 0 }, root: { id: 'a', text: 'dup', children: [] } }]);
+    expect(doc.nodes.a.text).toBe('Alpha'); // main tree wins
+    expect(doc.floating).toEqual([]);
+  });
+
+  it('serializeFloating round-trips pos and metadata; undefined when empty', () => {
+    const doc = normalize(tree, 'right', [], floating);
+    expect(serializeFloating(doc)).toEqual(floating);
+    expect(serializeFloating(normalize(tree))).toBeUndefined();
+  });
+
+  it('visibleIds covers floating trees after the main tree', () => {
+    const doc = normalize(tree, 'right', [], floating);
+    const ids = visibleIds(doc);
+    expect(ids).toContain('f');
+    expect(ids).toContain('f1');
+    expect(ids.indexOf('f')).toBeGreaterThan(ids.indexOf('root'));
+  });
+
+  it('isRootId and floatingEntry distinguish roots', () => {
+    const doc = normalize(tree, 'right', [], floating);
+    expect(isRootId(doc, 'root')).toBe(true);
+    expect(isRootId(doc, 'f')).toBe(true);
+    expect(isRootId(doc, 'a')).toBe(false);
+    expect(floatingEntry(doc, 'f')?.pos).toEqual({ x: 500, y: 100 });
+    expect(floatingEntry(doc, 'root')).toBeUndefined();
+  });
+
+  it('cross-tree relationships survive normalization', () => {
+    const doc = normalize(tree, 'right', [{ id: 'r1', from: 'b', to: 'f1' }], floating);
+    expect(doc.relationships).toEqual([{ id: 'r1', from: 'b', to: 'f1' }]);
   });
 });

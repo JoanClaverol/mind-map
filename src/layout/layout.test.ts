@@ -350,3 +350,62 @@ describe('layoutTree down', () => {
     expectBoundsContainAll(layout);
   });
 });
+
+describe('floating trees', () => {
+  const floating = [
+    { pos: { x: 900, y: 400 }, root: node('f', [node('f1'), node('f2', [node('f2x')])]) },
+    { pos: { x: 900, y: 800 }, root: node('g', [node('g1', [node('g1x')], true)]) },
+  ];
+
+  it('anchors each floating root node top-left exactly at its pos', () => {
+    const doc = normalize(tree, 'right', [], floating);
+    const layout = layoutTree(doc, sizeOf);
+    const f = layout.rects.get('f')!;
+    expect(f.x).toBe(900);
+    expect(f.y).toBe(400);
+    const g = layout.rects.get('g')!;
+    expect(g.x).toBe(900);
+    expect(g.y).toBe(800);
+  });
+
+  it('lays floating trees as right-trees under every main structure', () => {
+    for (const style of ['right', 'balanced', 'down', 'timeline'] as const) {
+      const doc = normalize(tree, style, [], floating);
+      const layout = layoutTree(doc, sizeOf);
+      expect(layout.dirs.get('f'), style).toBe('right');
+      expect(layout.dirs.get('f2x'), style).toBe('right');
+      const f = layout.rects.get('f')!;
+      const f1 = layout.rects.get('f1')!;
+      expect(f1.x, style).toBeCloseTo(f.x + f.w + DEFAULT_LAYOUT.gapX, 6);
+      // Anchor holds regardless of the main structure.
+      expect(f.x, style).toBe(900);
+      expect(f.y, style).toBe(400);
+    }
+  });
+
+  it('keeps parents centered on their child band blocks after translation', () => {
+    const doc = normalize(tree, 'right', [], floating);
+    const layout = layoutTree(doc, sizeOf);
+    const f2 = layout.rects.get('f2')!;
+    const band = layout.bands.get('f2x')!;
+    expect(f2.y + f2.h / 2).toBeCloseTo(band.start + band.size / 2, 6);
+  });
+
+  it('skips collapsed floating branches and unions bounds over all trees', () => {
+    const doc = normalize(tree, 'right', [], floating);
+    const layout = layoutTree(doc, sizeOf);
+    expect(layout.rects.has('g1x')).toBe(false); // g1 is collapsed
+    expect([...layout.rects.keys()].sort()).toEqual([...visibleIds(doc)].sort());
+    expectBoundsContainAll(layout);
+    // bounds must reach the floating trees, far right of the main tree.
+    expect(layout.bounds.x + layout.bounds.w).toBeGreaterThanOrEqual(900);
+  });
+
+  it('main-tree placement is byte-identical with and without floating trees', () => {
+    const bare = layoutTree(normalize(tree), sizeOf);
+    const withFloating = layoutTree(normalize(tree, 'right', [], floating), sizeOf);
+    for (const id of bare.rects.keys()) {
+      expect(withFloating.rects.get(id)).toEqual(bare.rects.get(id));
+    }
+  });
+});

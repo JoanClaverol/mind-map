@@ -1,5 +1,5 @@
 import { api } from '../api/client';
-import { denormalize } from '../model/doc';
+import { denormalize, serializeFloating } from '../model/doc';
 import { SCHEMA_VERSION, type MapFile } from '../model/types';
 import { useStore } from './store';
 
@@ -22,6 +22,7 @@ function buildMapFile(): MapFile | null {
     pinned: s.pinned ? true : undefined, // JSON.stringify drops undefined — files stay minimal
     relationships: s.doc.relationships.length ? s.doc.relationships : undefined,
     root: denormalize(s.doc),
+    floating: serializeFloating(s.doc),
   };
 }
 

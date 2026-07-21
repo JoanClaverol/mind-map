@@ -100,3 +100,33 @@ describe('setMapFolder', () => {
     expect(await storage.setMapFolder('zzzzzz', 'Work')).toBe(false);
   });
 });
+
+describe('schema v2 on disk', () => {
+  it('upgrades v1 files on read and counts floating tree nodes in gallery metadata', async () => {
+    const storage = await freshStorage();
+    const v1 = {
+      schemaVersion: 1,
+      id: 'v1floatcount',
+      title: 'Counting',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      root: { id: 'r0', text: 'r', children: [{ id: 'c1', text: 'c', children: [] }] },
+    };
+    writeFileSync(path.join(mapsDir, 'v1floatcount.json'), JSON.stringify(v1));
+    const read = await storage.readMap('v1floatcount');
+    expect(read?.schemaVersion).toBe(2);
+
+    writeFileSync(
+      path.join(mapsDir, 'v1floatcount.json'),
+      JSON.stringify({
+        ...v1,
+        schemaVersion: 2,
+        floating: [
+          { pos: { x: 0, y: 0 }, root: { id: 'f0', text: 'f', children: [{ id: 'f1', text: 'x', children: [] }] } },
+        ],
+      }),
+    );
+    const { maps } = await storage.listMaps();
+    expect(maps.find((m) => m.id === 'v1floatcount')?.nodeCount).toBe(4); // 2 main + 2 floating
+  });
+});

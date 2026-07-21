@@ -222,6 +222,27 @@ export function layoutTree(
     placeH(doc.rootId, 0, 0, 1);
   }
 
+  // Floating trees: always a right-tree, laid out at the local origin and then
+  // translated so the ROOT NODE's top-left lands exactly on the stored pos
+  // (XMind behavior — the floating topic stays where you put it; children fan
+  // out). childrenOf is collapse-aware, so only placed nodes are shifted.
+  for (const f of doc.floating) {
+    bandHeight(f.rootId);
+    placeH(f.rootId, 0, 0, 1);
+    const local = rects.get(f.rootId)!;
+    const dx = f.pos.x - local.x;
+    const dy = f.pos.y - local.y;
+    const shift = (id: string) => {
+      const r = rects.get(id)!;
+      r.x += dx;
+      r.y += dy;
+      const b = bands.get(id)!;
+      b.start += dy;
+      for (const c of childrenOf(id)) shift(c);
+    };
+    shift(f.rootId);
+  }
+
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;

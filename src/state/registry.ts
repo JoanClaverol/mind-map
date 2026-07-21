@@ -234,7 +234,43 @@ function withGallerySelection(fn: (m: MapMeta) => void): void {
   if (selected) fn(selected);
 }
 
+/**
+ * Pick a spot for a new floating tree: the view center, nudged below the
+ * content bounds when the center would land on (or too near) existing nodes.
+ */
+function floatingTreeSpot(): { x: number; y: number } {
+  const s = state();
+  const { w, h } = hostSize();
+  const center = {
+    x: (w / 2 - s.viewport.x) / s.viewport.zoom - 30,
+    y: (h / 2 - s.viewport.y) / s.viewport.zoom - 14,
+  };
+  const layout = getLastLayout();
+  if (!layout) return center;
+  const CLEAR = 40;
+  for (const r of layout.rects.values()) {
+    if (
+      center.x > r.x - CLEAR &&
+      center.x < r.x + r.w + CLEAR &&
+      center.y > r.y - CLEAR &&
+      center.y < r.y + r.h + CLEAR
+    ) {
+      return { x: layout.bounds.x, y: layout.bounds.y + layout.bounds.h + 80 };
+    }
+  }
+  return center;
+}
+
 export const registry: Record<string, AppCommand> = {
+  'tree.addFloating': {
+    description: 'Add a floating tree at the view center and edit it',
+    run: () => {
+      const s = state();
+      if (!s.doc) return;
+      s.runCommand('addFloatingTree', (d) => cmd.addFloatingTree(d, floatingTreeSpot()));
+      state().startEdit('replace');
+    },
+  },
   'node.addChild': {
     description: 'Add a child node and edit it',
     run: () =>
