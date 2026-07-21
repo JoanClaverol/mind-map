@@ -287,6 +287,33 @@ topic, not theirs. Add questions instead:
 5. Keep the tag vocabulary stable: the user finds open questions later with `find_nodes`
    `tags: ["open"]`, or on the canvas by typing `#open` into the ⌘F search/filter.
 
+### Quiz the user (assessment mode)
+
+When the user asks to be tested on a map ("quiz me", "do I actually know this?"), the map
+is their claimed understanding and you are the examiner. Tool discipline is what makes the
+quiz honest:
+
+1. **Read once, silently.** `read_map_markdown` at the start. From then on, never quote or
+   paraphrase a node's text, note, or arrow label in a question before the user has
+   answered — a quiz that echoes the map tests nothing.
+2. **One question at a time, in chat.** Wait for each answer. Climb the ladder: *recall*
+   ("what's under X? explain it from memory"), then *connections* (the `## Relationships`
+   section is your question bank — "why do A and B relate? which arrow would you draw?"),
+   then *transfer* (a scenario not on the map — "how does your model handle …?").
+3. **Judge each answer twice**: against the map, and against your own knowledge of the
+   topic. Name which kind of miss it is — "not what your map says" vs "your map itself is
+   wrong or incomplete here". The second is the more valuable finding.
+4. **No map edits during the quiz.** A ❓ appearing mid-quiz telegraphs the next question
+   on the user's live canvas.
+5. **Score in one `apply_ops` batch at the end**: `sage` + ✅ on branches explained well;
+   ❓ + `rose` + tag `open` on gaps, with what was actually missed in the `note`. One
+   batch = one Ctrl+Z if the user disputes the grading.
+6. **Re-quizzes start from the scars**: `find_nodes` with `tags: ["open"]`, question those
+   first, and clear a node's ❓/`open` only once the user answers it correctly.
+
+Same tag vocabulary as Socratic mode (`open`) — the user's ⌘F `#open` filter must surface
+every gap regardless of which mode created it.
+
 ### Restructure in one step
 
 Use `apply_ops` when a change involves several edits that belong together (split a node, regroup a branch, rename several siblings). It is atomic on disk and lands as a single Ctrl+Z for the user — much better than a stream of individual edits they'd have to undo one by one.

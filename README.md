@@ -134,6 +134,15 @@ And when the map is *your* thinking on a topic, flip the AI from author to criti
 
 Then work through the questions: `⌘F` `#open` shows every open one; answer by editing.
 
+Or make it an exam — the map is your claimed understanding, the AI grades it:
+
+> *"Quiz me on this map — one question at a time, don't show me what the map says. At the
+> end mark what I explained well sage ✅ and what I missed ❓ + tag `open`."*
+
+The full examiner protocol (question ladder, no-echo rule, one-batch scoring) is the
+"Quiz the user" workflow in [MCP.md](MCP.md), which every connected client reads — the
+short prompt above is enough to trigger it.
+
 While it works: keep editing by hand, drag nodes around, and press `⌘Z` any time — an AI
 edit (even a 50-op batch) is one undo step, and your version always wins on conflicts.
 Press `⇧I` to see the notes and tags the AI attached.
