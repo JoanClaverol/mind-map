@@ -10,7 +10,7 @@ own). You keep editing by hand the whole time — on conflicts, your version win
 
 Underneath it's a keyboard-first, [XMind](https://xmind.app)-style mind mapper: every
 action has a hotkey, and each map is a human-readable JSON file that's friendly to git and
-backups. Everything runs on your machine.
+backups. Everything runs on your machine — no API keys, no external services, no cloud.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -19,15 +19,20 @@ backups. Everything runs on your machine.
 
 ## How it works
 
-Maps are plain JSON files. A small local server exposes them two ways at once: to your
-**browser** (the canvas) and to your **LLM** (the MCP server, over stdio or HTTP). AI edits
-are surgical operations — add/move/edit/delete nodes, draw relationship arrows, atomic
-batches — broadcast over SSE to the open tab and replayed through the same undo pipeline
-as your keystrokes. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
+Maps are plain JSON files. One small local server exposes them two ways at once: to your
+**browser** (the canvas) and to your **LLM** (the MCP server). AI edits are surgical
+operations — add/move/edit/delete nodes, draw relationship arrows, atomic batches —
+broadcast over SSE to the open tab and replayed through the same undo pipeline as your
+keystrokes. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
+
+## Requirements
+
+- [Node.js](https://nodejs.org) 20+ and [pnpm](https://pnpm.io) 9+ (`npm install -g pnpm`)
+- macOS or Linux. On Windows, use [WSL](https://learn.microsoft.com/windows/wsl/) — the
+  CLI relies on Unix conventions and is untested natively.
+- [Docker](https://www.docker.com) only if you prefer running the app as a container.
 
 ## Install
-
-Requires [Node.js](https://nodejs.org) 20+ and [pnpm](https://pnpm.io) 9+.
 
 ```bash
 git clone https://github.com/joanclaverol/mind-map.git && cd mind-map
@@ -35,51 +40,118 @@ pnpm install && pnpm build
 pnpm link --global        # exposes the `mindmap` command
 ```
 
-(Prefer containers? `docker compose up -d --build` runs the same app on port 5454.)
-
-## Quick start
-
-**The main library** — your personal collection of maps:
+Check it worked:
 
 ```bash
-pnpm dev                  # or Docker, above
+mindmap                   # prints usage — if "command not found", see Troubleshooting
 ```
 
-Open <http://localhost:5454>, create a map, then connect your AI (next section).
+That's the whole install. Updating later is `git pull && pnpm install && pnpm build`.
 
-**A per-project session** — maps that live *inside* another repo (repo analysis,
-presentation prep…), served ephemerally:
+## Step 1 — Run the app and make a first map
+
+```bash
+pnpm dev                  # from the repo; or: docker compose up -d --build
+```
+
+Open <http://localhost:5454>. You land in the gallery — press `n`, type a title, `Enter`.
+On the canvas: `Tab` adds a child, `Enter` a sibling, just **type** to replace the selected
+node's text, `hjkl` or arrows to move around, `?` shows every hotkey. Maps autosave to
+`maps/*.json` as you type.
+
+Leave this running and the browser tab open — that's your half of the co-editing session.
+
+## Step 2 — Connect your AI
+
+`mindmap config` prints ready-to-paste config for every supported client; pass a name for
+just one:
+
+```bash
+mindmap config claude-code     # or: claude-desktop | codex | opencode
+```
+
+Each client offers two transports — **pick the right one for what you want**:
+
+| Transport | What it is | When to use it |
+| --- | --- | --- |
+| **HTTP** — `http://localhost:5454/mcp` | Connects to the running app — the same process your browser is looking at. | **For live co-editing.** AI edits stream onto your open canvas. Requires step 1 to be running. |
+| **stdio** — `node <repo>/bin/mindmap.js stdio` | The client spawns its own headless server on demand. | For map access without the app running (e.g. Claude Desktop reading/writing your library). Edits land in the files but **won't appear live** in a browser tab — it's a separate process. |
+
+Copy-paste setup per client (replace `/path/to/mind-map` with your clone; `mindmap config`
+prints these with the real path filled in):
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http mindmap http://localhost:5454/mcp   # live co-editing
+# or, no running app needed:
+claude mcp add mindmap -- node /path/to/mind-map/bin/mindmap.js stdio
+```
+
+**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`
+(Linux: `~/.config/Claude/claude_desktop_config.json`), then restart Claude Desktop:
+
+```json
+{ "mcpServers": { "mindmap": { "command": "node", "args": ["/path/to/mind-map/bin/mindmap.js", "stdio"] } } }
+```
+
+> `mindmap config claude-desktop` prints this with the absolute path to your Node binary —
+> use that version if Claude Desktop can't find `node` (GUI apps don't see your shell PATH).
+
+**Codex CLI** — add to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.mindmap]
+url = "http://localhost:5454/mcp"      # live co-editing
+# or stdio:  command = "node"  /  args = ["/path/to/mind-map/bin/mindmap.js", "stdio"]
+```
+
+**opencode** — add to `opencode.json` in your project:
+
+```json
+{ "mcp": { "mindmap": { "type": "remote", "url": "http://localhost:5454/mcp", "enabled": true } } }
+```
+
+Clients load MCP servers **at session start** — restart the client/session after adding.
+
+## Step 3 — Your first co-editing session
+
+With the map open in the browser and your client connected over **HTTP**, try:
+
+> *"List my maps, open the one called X, and map out a launch plan for a weekend project."*
+
+Nodes appear on your canvas as the AI writes them. Then push it further:
+
+> *"Review this map: mark open questions with ❓ and a short note, tag everything
+> launch-critical, and color decided items sage."*
+
+> *"These three ideas don't belong under marketing — pull them out into a floating tree
+> and connect it to the budget node with an arrow labeled 'depends on'."*
+
+While it works: keep editing by hand, drag nodes around, and press `⌘Z` any time — an AI
+edit (even a 50-op batch) is one undo step, and your version always wins on conflicts.
+Press `⇧I` to see the notes and tags the AI attached.
+
+## Use it inside another project
+
+For maps that belong to a *different* repo (a repo analysis, a presentation outline…),
+run an ephemeral instance from that directory:
 
 ```bash
 cd ~/your/other/project
 mindmap claude    # serve ./mindmaps on a free port, open the browser,
-                  # launch claude with the tools injected; teardown on exit
-mindmap up        # same server, foreground — prints the config to connect
-                  # any other client yourself
+                  # launch Claude Code with the tools injected; teardown on exit
+mindmap up        # same server, foreground — prints the URL + config so you can
+                  # connect any other client yourself
 ```
 
 The only thing left in the host repo is `mindmaps/` — plain map JSON, meant to be
 committed so the maps version with that project. Session files live in `.mindmap/`,
 auto-added to `.git/info/exclude`.
 
-## Connect your AI
-
-`mindmap config` prints ready-to-paste MCP config for every supported client
-(`claude-code`, `claude-desktop`, `codex`, `opencode`) — stdio and HTTP variants:
-
-```bash
-mindmap config claude-code
-# claude mcp add mindmap -- node /path/to/mind-map/bin/mindmap.js stdio
-```
-
-- **stdio** (`mindmap stdio`) — the client spawns the server itself; serves the main
-  library by default (`--maps DIR` to override). No app needs to be running.
-- **HTTP** (`http://localhost:5454/mcp`) — connect to the running app; required for the
-  live-canvas experience, since the browser and the LLM share one server.
-
 ## What your AI can do
 
-The MCP server (guide: [MCP.md](MCP.md)) exposes the full editing surface:
+The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editing surface:
 
 | | Tools |
 | --- | --- |
@@ -172,14 +244,29 @@ title; `p` toggles a pin, stored in the map file), **Recent** (last five opened,
 Each map is a pretty-printed JSON file in `maps/`, named `<id>.json` — one file per map,
 human-readable, easy to diff and back up. There's no database. The schema is documented in
 [ARCHITECTURE.md](ARCHITECTURE.md#data-model). Your own map files stay on your machine; only
-the demo `welcome.json` is committed to this repo.
+the demo `welcome.json` is committed to this repo. Per-project sessions store their maps in
+that project's `mindmaps/` folder instead. Override the directory anytime with the
+`MAPS_DIR` env var (and the port with `PORT`).
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| `mindmap: command not found` after install | `pnpm link --global` needs pnpm's global bin on your PATH — run `pnpm setup`, restart the shell, then link again. Or skip the CLI and use the repo paths directly. |
+| `mind-map isn't built — run "pnpm build"` | The CLI serves the compiled UI: run `pnpm build` in the repo once (and after every `git pull`). |
+| The client doesn't list the mindmap tools | MCP servers load at session start — restart the client/session after adding the config. In Claude Code, check with `/mcp`. |
+| AI edits don't appear in my browser | You're connected over **stdio**, which is a separate headless process. Switch the client to the **HTTP** config (`http://localhost:5454/mcp`) and make sure the app from step 1 is running. |
+| Claude Desktop says it can't start the server | GUI apps don't inherit your shell PATH — use the absolute Node path that `mindmap config claude-desktop` prints. |
+| Port 5454 is busy | Another instance (often the Docker container) owns it. Stop it, or run with `PORT=5460 pnpm start` and point the client at the new port. `mindmap up` picks a free port automatically. |
+| Browser tab shows "Autosave failed" after updating | The tab predates a schema upgrade — reload it. |
+| Two people/tools editing the same map | It's a single-user local tool: the browser wins conflicts, and simultaneous browser tabs on one map are last-write-wins. |
 
 ## Documentation
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — how it's built: frontend, server, data model,
   layout, the command/undo-redo pattern, and a diagram.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — setup, conventions, how to add a feature.
-- **[MCP.md](MCP.md)** — connecting an AI client to the built-in MCP server.
+- **[MCP.md](MCP.md)** — the guide AI models read: every tool, the schema, and workflows.
 
 ## License
 

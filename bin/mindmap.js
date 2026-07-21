@@ -203,8 +203,9 @@ claude mcp add mindmap -- node ${binPath} stdio
 claude mcp add --transport http mindmap http://localhost:5454/mcp
 # or in a project's .mcp.json:
 ${stdioJson}`,
-    'claude-desktop': `# Claude Desktop — ~/Library/Application Support/Claude/claude_desktop_config.json
-# (absolute node path: GUI apps don't inherit your shell PATH)
+    'claude-desktop': `# Claude Desktop — macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+#                   Linux: ~/.config/Claude/claude_desktop_config.json
+# (absolute node path: GUI apps don't inherit your shell PATH; restart Claude Desktop after)
 ${desktopJson}`,
     codex: `# Codex CLI — ~/.codex/config.toml
 [mcp_servers.mindmap]
