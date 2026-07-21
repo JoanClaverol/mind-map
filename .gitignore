@@ -5,3 +5,8 @@ dist/
 .DS_Store
 *.log
 mind-map-share.zip
+
+# personal maps stay local — only the demo map and folder manifest are tracked
+maps/*.json
+!maps/welcome.json
+!maps/folders.json

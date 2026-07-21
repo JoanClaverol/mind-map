@@ -1,23 +1,99 @@
-# mind-map
+# mindmap-mcp
 
-A keyboard-first, [XMind](https://xmind.app)-style mind mapping tool. Brainstorm at the
-speed of typing — every action has a hotkey, maps are plain JSON files you own, and the
-whole thing is small enough to read and bend to your workflow.
+**A local mind-map canvas any MCP-capable LLM can co-edit live, while you edit it too.**
+
+Open a map in your browser, connect Claude Code, Claude Desktop, Codex, opencode — or any
+other [MCP](https://modelcontextprotocol.io) client — and develop ideas together: the AI
+adds, restructures, and connects nodes through the MCP server; every change streams onto
+your canvas instantly and lands in your undo history (`⌘Z` reverts an AI edit like your
+own). You keep editing by hand the whole time — on conflicts, your version wins.
+
+Underneath it's a keyboard-first, [XMind](https://xmind.app)-style mind mapper: every
+action has a hotkey, and each map is a human-readable JSON file that's friendly to git and
+backups. Everything runs on your machine.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <!-- Placeholder art. Replace docs/screenshot.svg with a real screenshot or GIF (a .png/.gif is fine — just update the path below). -->
-<p align="center"><img src="docs/screenshot.svg" alt="mind-map" width="100%"></p>
+<p align="center"><img src="docs/screenshot.svg" alt="mindmap-mcp" width="100%"></p>
 
-## Why
+## How it works
 
-Most mind-map tools are mouse-driven and lock your data in a proprietary file. mind-map is
-the opposite: you keep your hands on the keyboard like in vim, the structure is a tree you
-navigate with `hjkl`, and each map is a human-readable JSON file that's friendly to git and
-backups. It runs entirely on your machine.
+Maps are plain JSON files. A small local server exposes them two ways at once: to your
+**browser** (the canvas) and to your **LLM** (the MCP server, over stdio or HTTP). AI edits
+are surgical operations — add/move/edit/delete nodes, draw relationship arrows, atomic
+batches — broadcast over SSE to the open tab and replayed through the same undo pipeline
+as your keystrokes. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
+
+## Install
+
+Requires [Node.js](https://nodejs.org) 20+ and [pnpm](https://pnpm.io) 9+.
+
+```bash
+git clone https://github.com/joanclaverol/mind-map.git && cd mind-map
+pnpm install && pnpm build
+pnpm link --global        # exposes the `mindmap` command
+```
+
+(Prefer containers? `docker compose -f docker-compose.share.yml up -d --build` runs the
+app without any integrations.)
+
+## Quick start
+
+**The main library** — your personal collection of maps:
+
+```bash
+pnpm dev                  # or Docker, above
+```
+
+Open <http://localhost:5454>, create a map, then connect your AI (next section).
+
+**A per-project session** — maps that live *inside* another repo (repo analysis,
+presentation prep…), served ephemerally:
+
+```bash
+cd ~/your/other/project
+mindmap claude    # serve ./mindmaps on a free port, open the browser,
+                  # launch claude with the tools injected; teardown on exit
+mindmap up        # same server, foreground — prints the config to connect
+                  # any other client yourself
+```
+
+The only thing left in the host repo is `mindmaps/` — plain map JSON, meant to be
+committed so the maps version with that project. Session files live in `.mindmap/`,
+auto-added to `.git/info/exclude`.
+
+## Connect your AI
+
+`mindmap config` prints ready-to-paste MCP config for every supported client
+(`claude-code`, `claude-desktop`, `codex`, `opencode`) — stdio and HTTP variants:
+
+```bash
+mindmap config claude-code
+# claude mcp add mindmap -- node /path/to/mind-map/bin/mindmap.js stdio
+```
+
+- **stdio** (`mindmap stdio`) — the client spawns the server itself; serves the main
+  library by default (`--maps DIR` to override). No app needs to be running.
+- **HTTP** (`http://localhost:5454/mcp`) — connect to the running app; required for the
+  live-canvas experience, since the browser and the LLM share one server.
+
+## What your AI can do
+
+The MCP server (guide: [MCP.md](MCP.md)) exposes the full editing surface:
+
+| | Tools |
+| --- | --- |
+| Read | `read_map`, `read_map_markdown` (id-annotated + arrows), `get_subtree`, `list_maps` |
+| Search | `find_nodes` — locate ideas across one or **all** maps without reading them whole |
+| Edit nodes | `add_nodes`, `edit_node`, `move_node`, `delete_node` |
+| Connect ideas | `add_relationship`, `edit_relationship`, `delete_relationship` — labeled arrows between any two nodes |
+| Batch | `apply_ops` — up to 50 edits, atomic on disk, **one undo step** for you |
+| Create | `create_map_from_outline`, `generate_map` (only with an OpenRouter key) |
 
 ## Features
 
+- **Live AI co-editing** — any MCP client edits the open map; changes stream in, undoable.
 - **Keyboard-first editing** — add, navigate, reorder, and restructure without the mouse.
 - **Four layouts** — logic chart, balanced map, org chart, and a Now/Next/Later roadmap;
   cycle per-map with `⇧S`.
@@ -25,41 +101,9 @@ backups. It runs entirely on your machine.
 - **Inline markdown** in node text: bold, italic, code, strike, highlight, links.
 - **Markdown interop** — copy a branch as a nested list; paste any outline (Obsidian, Notes,
   XMind exports) as a subtree.
-- **Local-first storage** — one JSON file per map in `maps/`, no database.
+- **Local-first storage** — one JSON file per map, no database, no cloud.
 - **Optional AI & voice** — voice notes transcribed locally, AI outline/refine, and an
   "ask this map" chat (all off until you add a key). See [Optional integrations](#optional-integrations).
-- **MCP server** — let an AI client (e.g. Claude) read and generate maps. See [MCP.md](MCP.md).
-
-## Prerequisites
-
-- To **run** it: [Docker](https://www.docker.com), or [Node.js](https://nodejs.org) 20+ with
-  [pnpm](https://pnpm.io) 9+.
-- To **develop** it: Node 20+ and pnpm 9+. (Docker and Python are only needed for the
-  container workflow and local voice transcription.)
-
-## Quick start
-
-**Try it (Docker, no integrations needed):**
-
-```bash
-docker compose -f docker-compose.share.yml up -d --build
-```
-
-Open <http://localhost:5454>. Maps are stored as JSON in the `maps/` folder next to the
-compose file. Voice, AI, and the second-brain integration are disabled by default.
-
-**Develop it (app + API on one port, with hot reload):**
-
-```bash
-pnpm install
-pnpm dev
-```
-
-Then open <http://localhost:5454>.
-
-> The full `docker-compose.yml` is the author's personal setup — it expects a pre-existing
-> external `whisper-cache` Docker volume and a running second-brain service. Use
-> `docker-compose.share.yml` (above) unless you've set those up.
 
 New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -127,7 +171,9 @@ the demo `welcome.json` is committed to this repo.
 ## Optional integrations
 
 Everything below is **off by default**. Copy `.env.example` to `.env` and set only the keys
-for what you want. With no keys, the app works fully as an offline mind mapper.
+for what you want. With no keys, the app works fully as an offline mind mapper (and the
+full `docker-compose.yml` is the author's personal setup — it expects an external
+`whisper-cache` volume and a second-brain service; use `docker-compose.share.yml` instead).
 
 | Feature | What it does | Env keys |
 | --- | --- | --- |

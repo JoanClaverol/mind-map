@@ -62,6 +62,14 @@ This split keeps the request handlers identical in both environments.
   `store.runCommand`, which records the forward patches and their inverses, so undo and
   redo are exact and selection is restored from history. **Nothing mutates `doc` outside
   this path** — that invariant is what makes history correct.
+- **Live sync** ([`src/state/livesync.ts`](src/state/livesync.ts)): edits made through the
+  MCP server arrive over SSE as `map-ops` batches and are replayed through `runCommand`
+  using the same shared op vocabulary ([`src/model/ops.ts`](src/model/ops.ts): node ops +
+  relationship ops) the server applied — one batch = one history entry, so Ctrl+Z undoes
+  an AI edit (or a whole `apply_ops` batch) like a local edit. The server applies batches
+  all-or-nothing; the browser replays them best-effort per op (its doc may have diverged).
+  After each batch the store is marked dirty so autosave re-asserts the browser's doc (the
+  union of both sides) to disk — the browser wins conflicts.
 - **Layout is a pure function.** [`src/layout/layout.ts`](src/layout/layout.ts) maps
   `(doc, sizes) → rectangles`. Node sizes come from
   [`src/layout/measure.ts`](src/layout/measure.ts), which measures text in an offscreen div
@@ -84,8 +92,9 @@ A handful of focused modules under [`server/`](server):
 | `openrouter.ts` | Calls to OpenRouter for refine, ask-this-map chat (streaming), and map generation. |
 | `transcriber.ts` | Proxies audio to the Whisper sidecar. |
 | `mcp.ts` | **Outbound** MCP client to the external second-brain (push todo / save note). |
-| `mcp-server.ts` | **Inbound** MCP server exposing mind-map tools to AI clients (see [MCP.md](MCP.md)). |
+| `mcp-server.ts` | **Inbound** MCP server exposing mind-map tools to AI clients, including surgical node edits (see [MCP.md](MCP.md)). |
 | `mcp-stdio.ts` | stdio entry point for the inbound MCP server. |
+| `events.ts` | In-process pub/sub for external map edits (`map-ops` batches), fanned out to browser tabs over SSE (`GET /api/events`). |
 
 The server imports shared types from `src/model/` only; it has no other dependency on the
 frontend.
@@ -126,8 +135,9 @@ interface Relationship {
 
 - The **root** node holds the map title.
 - **Relationships** are free, directional arrows between *any* two nodes — not parent/child
-  links. They live in the JSON but are deliberately excluded from markdown copy/paste, which
-  stays tree-only.
+  links. They live in the JSON but are deliberately excluded from markdown *copy/paste*,
+  which stays tree-only. (MCP reads are different: `read_map_markdown`/`get_subtree` append
+  a `## Relationships` section so connected ideas are visible to AI clients.)
 - Schema migrations live in [`src/model/migrate.ts`](src/model/migrate.ts); bump
   `schemaVersion` and add a migration when the shape changes.
 
@@ -146,6 +156,8 @@ src/
   model/      types, doc helpers, markdown (block + inline), segments, migrations
   state/      Zustand store, Immer command functions, command registry, autosave
 server/       Hono app and the modules described above
+bin/          the `mindmap` CLI — per-project sessions (`up`, `claude`), a stdio MCP entry
+              for spawning clients (`stdio`), and per-client config snippets (`config`)
 transcriber/  Whisper sidecar (Python; faster-whisper) used for local transcription
 maps/         your map JSON files (git-ignored except the demo welcome map)
 scripts/      make-shareable.sh — package a maps/secrets-free zip to hand to someone

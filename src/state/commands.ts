@@ -1,5 +1,6 @@
 import type { Draft } from 'immer';
-import { newId, subtreeIds } from '../model/doc';
+import { newId } from '../model/doc';
+import { applyDocOp, assignIds } from '../model/ops';
 import type { Doc, DocNode, FileNode, LayoutStyle } from '../model/types';
 
 /**
@@ -58,25 +59,8 @@ export function deleteSubtree(draft: Draft<Doc>, nodeId: string): CommandResult 
     draft.nodes[nodeId].text = '';
     return { select: nodeId };
   }
-  const parentId = findParentInDraft(draft, nodeId);
-  if (!parentId) return {};
-  const parent = draft.nodes[parentId];
-  const idx = parent.children.indexOf(nodeId);
-  parent.children.splice(idx, 1);
-  const removed = new Set<string>();
-  const stack = [nodeId];
-  while (stack.length) {
-    const id = stack.pop()!;
-    removed.add(id);
-    stack.push(...draft.nodes[id].children);
-    delete draft.nodes[id];
-  }
-  // Drop arrows touching any deleted node; undo restores them with the nodes.
-  if (draft.relationships.some((r) => removed.has(r.from) || removed.has(r.to))) {
-    draft.relationships = draft.relationships.filter((r) => !removed.has(r.from) && !removed.has(r.to));
-  }
-  const next = parent.children[Math.min(idx, parent.children.length - 1)] ?? parentId;
-  return { select: next };
+  const r = applyDocOp(draft, { type: 'delete_node', nodeId });
+  return r.ok ? { select: r.select } : {};
 }
 
 export function toggleCollapse(draft: Draft<Doc>, nodeId: string): CommandResult {
@@ -95,19 +79,12 @@ export function expandNode(draft: Draft<Doc>, nodeId: string): CommandResult {
 
 /** Paste branches (e.g. parsed from markdown) under a parent, with fresh ids. */
 export function pasteBranches(draft: Draft<Doc>, parentId: string, branches: FileNode[]): CommandResult {
-  const parent = draft.nodes[parentId];
-  if (!parent || branches.length === 0) return {};
-  let firstId: string | null = null;
-  const insert = (branch: FileNode, intoId: string): void => {
-    const id = newId();
-    if (!firstId) firstId = id;
-    draft.nodes[id] = { id, text: branch.text, collapsed: branch.collapsed ?? false, children: [] };
-    draft.nodes[intoId].children.push(id);
-    for (const child of branch.children) insert(child, id);
-  };
-  for (const branch of branches) insert(branch, parentId);
-  parent.collapsed = false;
-  return { select: firstId };
+  if (branches.length === 0) return {};
+  // Clone before assigning ids so callers' branches are never mutated.
+  const cloned = structuredClone(branches);
+  for (const branch of cloned) assignIds(branch);
+  const r = applyDocOp(draft, { type: 'add_nodes', parentId, branches: cloned });
+  return r.ok ? { select: r.select } : {};
 }
 
 /**
@@ -122,24 +99,8 @@ export function moveNode(
   newParentId: string,
   beforeSiblingId: string | null,
 ): CommandResult {
-  if (nodeId === draft.rootId) return {};
-  if (!draft.nodes[nodeId] || !draft.nodes[newParentId]) return {};
-  if (subtreeIds(draft, nodeId).includes(newParentId)) return {}; // cycle (incl. self)
-  if (beforeSiblingId === nodeId) return {}; // insert before self = unchanged
-  const newParent = draft.nodes[newParentId];
-  if (beforeSiblingId !== null && !newParent.children.includes(beforeSiblingId)) return {};
-  const oldParentId = findParentInDraft(draft, nodeId);
-  if (!oldParentId) return {};
-  const oldParent = draft.nodes[oldParentId];
-  const oldIdx = oldParent.children.indexOf(nodeId);
-  if (oldParentId === newParentId && beforeSiblingId === (oldParent.children[oldIdx + 1] ?? null)) {
-    return {}; // already exactly there (also covers append-when-already-last)
-  }
-  oldParent.children.splice(oldIdx, 1);
-  const idx = beforeSiblingId === null ? newParent.children.length : newParent.children.indexOf(beforeSiblingId);
-  newParent.children.splice(idx, 0, nodeId);
-  newParent.collapsed = false;
-  return { select: nodeId };
+  const r = applyDocOp(draft, { type: 'move_node', nodeId, newParentId, beforeSiblingId });
+  return r.ok ? { select: r.select } : {};
 }
 
 export function setLayoutStyle(draft: Draft<Doc>, style: LayoutStyle): CommandResult {
@@ -166,25 +127,16 @@ export function addRelationship(
   toId: string,
   id: string,
 ): CommandResult {
-  if (fromId === toId) return {};
-  if (!draft.nodes[fromId] || !draft.nodes[toId]) return {};
-  if (draft.relationships.some((r) => r.from === fromId && r.to === toId)) return {};
-  draft.relationships.push({ id, from: fromId, to: toId });
+  applyDocOp(draft, { type: 'add_relationship', relId: id, fromId, toId });
   return {};
 }
 
 export function setRelationshipLabel(draft: Draft<Doc>, relId: string, label: string): CommandResult {
-  const rel = draft.relationships.find((r) => r.id === relId);
-  if (!rel) return {};
-  const trimmed = label.trim();
-  if (trimmed) rel.label = trimmed;
-  else delete rel.label;
+  applyDocOp(draft, { type: 'edit_relationship', relId, label });
   return {};
 }
 
 export function deleteRelationship(draft: Draft<Doc>, relId: string): CommandResult {
-  const idx = draft.relationships.findIndex((r) => r.id === relId);
-  if (idx === -1) return {};
-  draft.relationships.splice(idx, 1);
+  applyDocOp(draft, { type: 'delete_relationship', relId });
   return {};
 }

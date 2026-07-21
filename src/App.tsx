@@ -10,6 +10,7 @@ import { TranscriptPanel } from './components/TranscriptPanel';
 import { Gallery } from './gallery/Gallery';
 import { markOpened } from './gallery/recents';
 import { flushNow, initAutosave } from './state/autosave';
+import { initLiveSync } from './state/livesync';
 import { useStore } from './state/store';
 
 function useHashRoute(): string {
@@ -44,6 +45,12 @@ function Editor({ mapId }: { mapId: string }) {
       cancelled = true;
     };
   }, [mapId]);
+
+  // Live sync starts once the map is loaded; keyed remount tears it down on switch.
+  useEffect(() => {
+    if (loadedId !== mapId) return;
+    return initLiveSync(mapId);
+  }, [loadedId, mapId]);
 
   useEffect(() => {
     const cleanup = initAutosave();

@@ -124,6 +124,14 @@ interface StoreState {
   markSaving(rev: number): void;
   markSaved(rev: number): void;
   markSaveError(): void;
+  /**
+   * Force a re-save of the current doc. Live-sync calls this after applying an
+   * external (MCP) edit so the browser re-asserts its full doc — the union of
+   * both sides — to disk, even when the op itself produced no patches.
+   */
+  markDirty(): void;
+  /** Close the node editor without committing (the edited node vanished under us). */
+  abortEdit(): void;
   addToast(kind: Toast['kind'], message: string): void;
   dismissToast(id: number): void;
   setTodoPending(nodeId: string, pending: boolean): void;
@@ -383,6 +391,14 @@ export const useStore = create<StoreState>((set, get) => ({
 
   markSaveError() {
     set({ saveState: 'error' });
+  },
+
+  markDirty() {
+    set((s) => ({ rev: s.rev + 1, saveState: 'dirty' }));
+  },
+
+  abortEdit() {
+    set({ editing: null });
   },
 
   addToast(kind, message) {

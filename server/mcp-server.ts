@@ -3,10 +3,12 @@ import { nanoid } from 'nanoid';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { normalize } from '../src/model/doc';
+import { denormalize, normalize, subtreeIds } from '../src/model/doc';
 import { branchToMarkdown, markdownToBranches } from '../src/model/markdown';
-import { SCHEMA_VERSION, type FileNode, type MapFile } from '../src/model/types';
-import { generateOutline } from './openrouter';
+import { applyDocOp, assignIds, type MapOp } from '../src/model/ops';
+import { SCHEMA_VERSION, type Doc, type FileNode, type MapFile } from '../src/model/types';
+import { publish } from './events';
+import { generateOutline, refineEnabled } from './openrouter';
 import * as storage from './storage';
 
 function errorResult(message: string): { content: Array<{ type: 'text'; text: string }>; isError: true } {
@@ -15,12 +17,6 @@ function errorResult(message: string): { content: Array<{ type: 'text'; text: st
 
 function nowIso(): string {
   return new Date().toISOString();
-}
-
-/** Recursively replace every id in a FileNode tree with fresh nanoids. */
-export function assignIds(node: FileNode): void {
-  node.id = nanoid(12);
-  for (const child of node.children) assignIds(child);
 }
 
 function buildMapFile(title: string, branches: FileNode[]): MapFile {
@@ -35,6 +31,65 @@ function buildMapFile(title: string, branches: FileNode[]): MapFile {
     layout: 'right',
     root,
   };
+}
+
+/**
+ * Apply surgical ops to a map on disk — all-or-nothing: the first failing op
+ * aborts the whole batch with nothing written and nothing published. On success
+ * the batch is broadcast as ONE event, so an open browser tab replays it as a
+ * single undoable step. Everything the ops don't touch (ids, todoIds, pinned,
+ * folder, viewport, createdAt) rides along.
+ */
+async function mutateMap(
+  mapId: string,
+  ops: MapOp[],
+): Promise<{ map: MapFile } | { error: string; failedIndex?: number }> {
+  if (!storage.isValidId(mapId)) return { error: 'invalid map id' };
+  const map = await storage.readMap(mapId);
+  if (!map) return { error: 'map not found' };
+  const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? []);
+  for (let i = 0; i < ops.length; i++) {
+    const result = applyDocOp(doc, ops[i]);
+    if (!result.ok) return { error: result.reason, failedIndex: i };
+  }
+  const updated: MapFile = { ...map, root: denormalize(doc), updatedAt: nowIso() };
+  // Relationship changes/pruning flow through; omit when empty to keep files minimal.
+  if (doc.relationships.length) updated.relationships = doc.relationships;
+  else delete updated.relationships;
+  await storage.writeMap(updated);
+  publish({ kind: 'map-ops', mapId, ops });
+  return { map: updated };
+}
+
+/** Render inserted branches as an outline annotated with their new ids. */
+function outlineWithIds(branches: FileNode[], depth = 0): string {
+  return branches
+    .map((b) => {
+      const line = `${'  '.repeat(depth)}- ${b.text} (id: ${b.id})`;
+      return b.children.length ? `${line}\n${outlineWithIds(b.children, depth + 1)}` : line;
+    })
+    .join('\n');
+}
+
+function truncateText(text: string, max = 40): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+}
+
+/**
+ * The arrows of a map as a markdown section, or null when there are none.
+ * With `scope`, only arrows touching one of those node ids are included
+ * (used by get_subtree so a branch read shows its cross-links).
+ */
+function relationshipsSection(doc: Doc, scope?: Set<string>): string | null {
+  const rels = doc.relationships.filter((r) => !scope || scope.has(r.from) || scope.has(r.to));
+  if (rels.length === 0) return null;
+  const lines = rels.map((r) => {
+    const from = `${r.from} ("${truncateText(doc.nodes[r.from].text)}")`;
+    const to = `${r.to} ("${truncateText(doc.nodes[r.to].text)}")`;
+    return `- [${r.id}] ${from} -> ${to}${r.label ? ` — "${r.label}"` : ''}`;
+  });
+  return `## Relationships\n${lines.join('\n')}`;
 }
 
 async function readTextFile(...segments: string[]): Promise<string | null> {
@@ -75,7 +130,7 @@ All map files are stored as pretty-printed JSON in the maps/ directory.`;
 }
 
 export function createMcpServer(): McpServer {
-  const server = new McpServer({ name: 'mind-map', version: '0.1.0' });
+  const server = new McpServer({ name: 'mindmap-mcp', version: '0.2.0' });
 
   server.registerTool(
     'get_project_context',
@@ -117,7 +172,8 @@ export function createMcpServer(): McpServer {
   server.registerTool(
     'read_map_markdown',
     {
-      description: 'Reads a map as a nested markdown outline (useful for feeding context back to the model).',
+      description:
+        'Reads a map as a nested markdown outline annotated with node ids, followed by its relationship arrows — everything needed to edit surgically without calling read_map.',
       inputSchema: z.object({ map_id: z.string().describe('The map id') }),
     },
     async (args) => {
@@ -125,8 +181,314 @@ export function createMcpServer(): McpServer {
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
       const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? []);
-      const markdown = branchToMarkdown(doc, map.root.id);
-      return { content: [{ type: 'text', text: `# ${map.title}\n\n${markdown}` }] };
+      const markdown = branchToMarkdown(doc, map.root.id, { ids: true });
+      const rels = relationshipsSection(doc);
+      return { content: [{ type: 'text', text: `# ${map.title}\n\n${markdown}${rels ? `\n\n${rels}` : ''}` }] };
+    },
+  );
+
+  server.registerTool(
+    'get_subtree',
+    {
+      description:
+        'Reads one branch of a map as an id-annotated outline, plus any relationship arrows touching it. Cheaper than read_map for large maps. depth limits how many levels of descendants are included.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        node_id: z.string().describe('Root node of the branch to read'),
+        depth: z.number().int().min(1).optional().describe('Levels of descendants to include; omit for the whole branch'),
+      }),
+    },
+    async (args) => {
+      if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
+      const map = await storage.readMap(args.map_id);
+      if (!map) return errorResult('map not found');
+      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? []);
+      if (!doc.nodes[args.node_id]) return errorResult(`node ${args.node_id} not found`);
+      const markdown = branchToMarkdown(doc, args.node_id, { ids: true, maxDepth: args.depth });
+      const rels = relationshipsSection(doc, new Set(subtreeIds(doc, args.node_id)));
+      return { content: [{ type: 'text', text: `${markdown}${rels ? `\n\n${rels}` : ''}` }] };
+    },
+  );
+
+  server.registerTool(
+    'find_nodes',
+    {
+      description:
+        'Finds nodes by text (case-insensitive substring) in one map or, when map_id is omitted, across all maps. Use this to locate node ids before editing instead of reading whole maps into context.',
+      inputSchema: z.object({
+        query: z.string().min(1).describe('Text to search for'),
+        map_id: z.string().optional().describe('Limit the search to one map'),
+      }),
+    },
+    async (args) => {
+      const needle = args.query.toLowerCase();
+      let targets: MapFile[];
+      if (args.map_id !== undefined) {
+        if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
+        const map = await storage.readMap(args.map_id);
+        if (!map) return errorResult('map not found');
+        targets = [map];
+      } else {
+        // listMaps is updatedAt-desc, so truncation keeps the most recent maps.
+        const { maps } = await storage.listMaps();
+        targets = (await Promise.all(maps.map((m) => storage.readMap(m.id)))).filter((m): m is MapFile => m !== null);
+      }
+      const MAX_HITS = 50;
+      const hits: string[] = [];
+      let truncated = false;
+      outer: for (const map of targets) {
+        const walk = (node: FileNode, path: string[]): boolean => {
+          if (node.text.toLowerCase().includes(needle)) {
+            if (hits.length >= MAX_HITS) return true;
+            const where = path.length ? `, path: ${path.join(' > ')}` : '';
+            hits.push(`- ${node.id} "${truncateText(node.text, 60)}" — map ${map.id} ("${map.title}")${where}`);
+          }
+          for (const child of node.children) {
+            if (walk(child, [...path, truncateText(node.text, 30)])) return true;
+          }
+          return false;
+        };
+        if (walk(map.root, [])) {
+          truncated = true;
+          break outer;
+        }
+      }
+      if (hits.length === 0) return { content: [{ type: 'text', text: 'No matches.' }] };
+      const note = truncated ? '\n(more matches truncated — narrow the query or pass map_id)' : '';
+      return { content: [{ type: 'text', text: `${hits.join('\n')}${note}` }] };
+    },
+  );
+
+  server.registerTool(
+    'add_nodes',
+    {
+      description:
+        'Adds nodes under an existing node, parsed from a markdown bullet outline (two-space indent per level). Get node ids from read_map first. The edit appears live in an open browser tab and is undoable there. Returns the inserted outline annotated with the new node ids so follow-up edits can target them without re-reading the map.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        parent_id: z.string().describe('Id of the node to add children under'),
+        markdown: z.string().describe('Markdown bullet outline for the new nodes'),
+      }),
+    },
+    async (args) => {
+      const branches = markdownToBranches(args.markdown);
+      if (branches.length === 0) return errorResult('markdown produced no nodes');
+      for (const branch of branches) assignIds(branch);
+      const r = await mutateMap(args.map_id, [{ type: 'add_nodes', parentId: args.parent_id, branches }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Added under ${args.parent_id}:\n${outlineWithIds(branches)}` }] };
+    },
+  );
+
+  server.registerTool(
+    'edit_node',
+    {
+      description:
+        'Replaces the text of one node. Node text supports inline markdown. Editing the root node changes its label, not the map title. The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        node_id: z.string().describe('Id of the node to edit'),
+        text: z.string().describe('New text for the node'),
+      }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [{ type: 'edit_node', nodeId: args.node_id, text: args.text }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Updated node ${args.node_id}` }] };
+    },
+  );
+
+  server.registerTool(
+    'move_node',
+    {
+      description:
+        'Moves a node (with its subtree) under a new parent. Omit before_sibling_id to append at the end, or pass a child of the new parent to insert before it. The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        node_id: z.string().describe('Id of the node to move'),
+        new_parent_id: z.string().describe('Id of the destination parent node'),
+        before_sibling_id: z.string().optional().describe('Insert before this child of the new parent; omit to append'),
+      }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [
+        {
+          type: 'move_node',
+          nodeId: args.node_id,
+          newParentId: args.new_parent_id,
+          beforeSiblingId: args.before_sibling_id ?? null,
+        },
+      ]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Moved node ${args.node_id} under ${args.new_parent_id}` }] };
+    },
+  );
+
+  server.registerTool(
+    'delete_node',
+    {
+      description:
+        'Deletes a node and its whole subtree (the root cannot be deleted). Relationships touching deleted nodes are pruned. The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        node_id: z.string().describe('Id of the node to delete'),
+      }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [{ type: 'delete_node', nodeId: args.node_id }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Deleted node ${args.node_id} and its subtree` }] };
+    },
+  );
+
+  server.registerTool(
+    'add_relationship',
+    {
+      description:
+        'Draws a labeled directional arrow between any two nodes — a free cross-link connecting ideas, not a parent/child edge. Returns the relationship id for later edit/delete. Self-links and duplicate from→to arrows are rejected. The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        from_id: z.string().describe('Source node id'),
+        to_id: z.string().describe('Target node id'),
+        label: z.string().optional().describe('Optional label shown on the arrow'),
+      }),
+    },
+    async (args) => {
+      const relId = nanoid(12);
+      const r = await mutateMap(args.map_id, [
+        { type: 'add_relationship', relId, fromId: args.from_id, toId: args.to_id, label: args.label },
+      ]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Added relationship ${relId}: ${args.from_id} -> ${args.to_id}` }] };
+    },
+  );
+
+  server.registerTool(
+    'edit_relationship',
+    {
+      description:
+        'Changes the label of an existing relationship arrow. An empty label removes it. The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        relationship_id: z.string().describe('Id of the relationship (from add_relationship or read_map_markdown)'),
+        label: z.string().describe('New label; empty string removes the label'),
+      }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [
+        { type: 'edit_relationship', relId: args.relationship_id, label: args.label },
+      ]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Updated relationship ${args.relationship_id}` }] };
+    },
+  );
+
+  server.registerTool(
+    'delete_relationship',
+    {
+      description:
+        'Deletes a relationship arrow (the nodes stay). The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        relationship_id: z.string().describe('Id of the relationship to delete'),
+      }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [{ type: 'delete_relationship', relId: args.relationship_id }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Deleted relationship ${args.relationship_id}` }] };
+    },
+  );
+
+  const batchOp = z.discriminatedUnion('op', [
+    z.object({
+      op: z.literal('add_nodes'),
+      parent_id: z.string(),
+      markdown: z.string().describe('Markdown bullet outline for the new nodes'),
+    }),
+    z.object({ op: z.literal('edit_node'), node_id: z.string(), text: z.string() }),
+    z.object({
+      op: z.literal('move_node'),
+      node_id: z.string(),
+      new_parent_id: z.string(),
+      before_sibling_id: z.string().optional(),
+    }),
+    z.object({ op: z.literal('delete_node'), node_id: z.string() }),
+    z.object({
+      op: z.literal('add_relationship'),
+      from_id: z.string(),
+      to_id: z.string(),
+      label: z.string().optional(),
+    }),
+    z.object({ op: z.literal('edit_relationship'), relationship_id: z.string(), label: z.string() }),
+    z.object({ op: z.literal('delete_relationship'), relationship_id: z.string() }),
+  ]);
+
+  server.registerTool(
+    'apply_ops',
+    {
+      description:
+        'Applies up to 50 edits to one map in a single atomic call — all succeed or none are applied — and lands as ONE undo step in the user\'s browser. Prefer this over sequential single-op calls when restructuring. Each op mirrors the corresponding single tool. Returns per-op results including newly assigned ids.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        ops: z.array(batchOp).min(1).max(50).describe('The edits, applied in order'),
+      }),
+    },
+    async (args) => {
+      const ops: MapOp[] = [];
+      const summaries: string[] = [];
+      for (let i = 0; i < args.ops.length; i++) {
+        const item = args.ops[i];
+        switch (item.op) {
+          case 'add_nodes': {
+            const branches = markdownToBranches(item.markdown);
+            if (branches.length === 0) {
+              return errorResult(`op ${i} (add_nodes): markdown produced no nodes — no changes were applied`);
+            }
+            for (const branch of branches) assignIds(branch);
+            ops.push({ type: 'add_nodes', parentId: item.parent_id, branches });
+            summaries.push(`[${i}] add_nodes under ${item.parent_id}:\n${outlineWithIds(branches, 1)}`);
+            break;
+          }
+          case 'edit_node':
+            ops.push({ type: 'edit_node', nodeId: item.node_id, text: item.text });
+            summaries.push(`[${i}] edit_node ${item.node_id}`);
+            break;
+          case 'move_node':
+            ops.push({
+              type: 'move_node',
+              nodeId: item.node_id,
+              newParentId: item.new_parent_id,
+              beforeSiblingId: item.before_sibling_id ?? null,
+            });
+            summaries.push(`[${i}] move_node ${item.node_id} under ${item.new_parent_id}`);
+            break;
+          case 'delete_node':
+            ops.push({ type: 'delete_node', nodeId: item.node_id });
+            summaries.push(`[${i}] delete_node ${item.node_id}`);
+            break;
+          case 'add_relationship': {
+            const relId = nanoid(12);
+            ops.push({ type: 'add_relationship', relId, fromId: item.from_id, toId: item.to_id, label: item.label });
+            summaries.push(`[${i}] add_relationship ${relId}: ${item.from_id} -> ${item.to_id}`);
+            break;
+          }
+          case 'edit_relationship':
+            ops.push({ type: 'edit_relationship', relId: item.relationship_id, label: item.label });
+            summaries.push(`[${i}] edit_relationship ${item.relationship_id}`);
+            break;
+          case 'delete_relationship':
+            ops.push({ type: 'delete_relationship', relId: item.relationship_id });
+            summaries.push(`[${i}] delete_relationship ${item.relationship_id}`);
+            break;
+        }
+      }
+      const r = await mutateMap(args.map_id, ops);
+      if ('error' in r) {
+        const where = r.failedIndex !== undefined ? `op ${r.failedIndex} (${ops[r.failedIndex].type}): ` : '';
+        return errorResult(`${where}${r.error} — no changes were applied`);
+      }
+      return { content: [{ type: 'text', text: `Applied ${ops.length} ops:\n${summaries.join('\n')}` }] };
     },
   );
 
@@ -145,10 +507,30 @@ export function createMcpServer(): McpServer {
       const branches = args.markdown ? markdownToBranches(args.markdown) : [];
       const map = buildMapFile(title, branches);
       await storage.writeMap(map);
+      publish({ kind: 'map-created', mapId: map.id, title: map.title });
       return { content: [{ type: 'text', text: `Created map "${map.title}" (id: ${map.id})` }] };
     },
   );
 
+  // Only offered when an OpenRouter key is configured — the connected LLM can
+  // always generate outlines itself and use create_map_from_outline instead.
+  if (refineEnabled()) {
+    registerGenerateMap(server);
+  }
+
+  server.registerResource(
+    'Mind Map MCP Guide',
+    'docs://mcp',
+    { mimeType: 'text/markdown', description: 'Complete guide for models using this MCP server, including tools, schema, and workflows.' },
+    async () => ({
+      contents: [{ uri: 'docs://mcp', mimeType: 'text/markdown', text: await buildProjectContext() }],
+    }),
+  );
+
+  return server;
+}
+
+function registerGenerateMap(server: McpServer): void {
   server.registerTool(
     'generate_map',
     {
@@ -183,6 +565,7 @@ export function createMcpServer(): McpServer {
       const displayTitle = args.title?.trim() ?? prompt.split('\n')[0].slice(0, 80);
       const map = buildMapFile(displayTitle, branches);
       await storage.writeMap(map);
+      publish({ kind: 'map-created', mapId: map.id, title: map.title });
       return {
         content: [
           {
@@ -193,15 +576,4 @@ export function createMcpServer(): McpServer {
       };
     },
   );
-
-  server.registerResource(
-    'Mind Map MCP Guide',
-    'docs://mcp',
-    { mimeType: 'text/markdown', description: 'Complete guide for models using this MCP server, including tools, schema, and workflows.' },
-    async () => ({
-      contents: [{ uri: 'docs://mcp', mimeType: 'text/markdown', text: await buildProjectContext() }],
-    }),
-  );
-
-  return server;
 }

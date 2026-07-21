@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
-import { stream } from 'hono/streaming';
+import { stream, streamSSE } from 'hono/streaming';
 import { nanoid } from 'nanoid';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { SCHEMA_VERSION, normalizeFolderName, type ChatTurn, type MapFile } from '../src/model/types';
+import * as events from './events';
 import { createMcpServer } from './mcp-server';
 import { createTodo, saveNote } from './mcp';
 import { refineEnabled, refineText, streamMapAnswer, structureTranscript } from './openrouter';
@@ -13,11 +14,21 @@ const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
 
 export const app = new Hono();
 
-const mcpServer = createMcpServer();
-const mcpTransport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: () => nanoid(12) });
-await mcpServer.connect(mcpTransport);
+// Lazily initialized on first request: createMcpServer decides its tool list
+// from env (e.g. generate_map needs OPENROUTER_API_KEY), and in dev the Vite
+// config populates process.env AFTER module top-levels have evaluated.
+let mcpTransportPromise: Promise<WebStandardStreamableHTTPServerTransport> | null = null;
+function getMcpTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
+  mcpTransportPromise ??= (async () => {
+    const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: () => nanoid(12) });
+    await createMcpServer().connect(transport);
+    return transport;
+  })();
+  return mcpTransportPromise;
+}
 
 app.all('/mcp', async (c) => {
+  const mcpTransport = await getMcpTransport();
   const parsedBody = c.req.method === 'POST' ? await c.req.json().catch(() => undefined) : undefined;
   return mcpTransport.handleRequest(c.req.raw, { parsedBody });
 });
@@ -25,6 +36,23 @@ app.all('/mcp', async (c) => {
 app.get('/api/config', async (c) => {
   return c.json({ refine: refineEnabled(), transcriber: await transcriberHealthy() });
 });
+
+// Live channel: pushes map changes made outside the browser (MCP tools) to open
+// tabs. Event name = kind, data = the full event JSON. Pings keep the stream alive.
+app.get('/api/events', (c) =>
+  streamSSE(c, async (s) => {
+    let close!: () => void;
+    const closed = new Promise<void>((resolve) => (close = resolve));
+    const unsub = events.subscribe((e) => void s.writeSSE({ event: e.kind, data: JSON.stringify(e) }));
+    const ping = setInterval(() => void s.writeSSE({ event: 'ping', data: '' }), 15_000);
+    s.onAbort(() => {
+      unsub();
+      clearInterval(ping);
+      close();
+    });
+    await closed;
+  }),
+);
 
 app.post('/api/transcribe', async (c) => {
   if (Number(c.req.header('content-length') ?? 0) > MAX_AUDIO_BYTES) {
@@ -141,6 +169,7 @@ app.post('/api/maps', async (c) => {
     root: { id: nanoid(12), text: title, children: [] },
   };
   await storage.writeMap(map);
+  events.publish({ kind: 'map-created', mapId: map.id, title: map.title });
   return c.json(map, 201);
 });
 
@@ -277,5 +306,6 @@ app.delete('/api/maps/:id', async (c) => {
   if (!storage.isValidId(id)) return c.json({ error: 'invalid map id' }, 400);
   const deleted = await storage.deleteMap(id);
   if (!deleted) return c.json({ error: 'map not found' }, 404);
+  events.publish({ kind: 'map-deleted', mapId: id });
   return c.json({ ok: true });
 });

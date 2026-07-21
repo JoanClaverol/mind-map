@@ -2,13 +2,24 @@ import type { Doc, FileNode } from './types';
 
 /**
  * Serialize a branch as a nested markdown list. The branch root is depth 0;
- * node text is flattened to one line. This is the clipboard interop format.
+ * node text is flattened to one line. The default (no opts) is the clipboard
+ * interop format and must stay byte-identical. `ids` annotates every line with
+ * `(id: …)` for MCP reads; `maxDepth` stops descending and marks the cut-off.
  */
-export function branchToMarkdown(doc: Doc, nodeId: string): string {
+export function branchToMarkdown(
+  doc: Doc,
+  nodeId: string,
+  opts?: { ids?: boolean; maxDepth?: number },
+): string {
   const lines: string[] = [];
   const walk = (id: string, depth: number) => {
     const node = doc.nodes[id];
-    lines.push(`${'  '.repeat(depth)}- ${node.text.replace(/\s+/g, ' ').trim()}`);
+    const text = node.text.replace(/\s+/g, ' ').trim();
+    const idTag = opts?.ids ? ` (id: ${id})` : '';
+    const cutOff = opts?.maxDepth !== undefined && depth >= opts.maxDepth && node.children.length > 0;
+    const hidden = cutOff ? ` … (+${node.children.length} children hidden)` : '';
+    lines.push(`${'  '.repeat(depth)}- ${text}${idTag}${hidden}`);
+    if (cutOff) return;
     for (const child of node.children) walk(child, depth + 1);
   };
   walk(nodeId, 0);
