@@ -36,8 +36,8 @@ two ways from the same code:
 
 - **Dev:** as Vite middleware ([`server/vite-plugin.ts`](server/vite-plugin.ts)), so the
   UI and API share one port (5454) with hot-module reload.
-- **Production / Docker:** wrapped by [`server/standalone.ts`](server/standalone.ts),
-  which serves the built assets and calls `serve()`.
+- **Production:** wrapped by [`server/standalone.ts`](server/standalone.ts),
+  which serves the built assets and calls `serve()` (`pnpm start`).
 
 This split keeps the request handlers identical in both environments.
 
@@ -80,7 +80,7 @@ A handful of focused modules under [`server/`](server):
 | --- | --- |
 | `app.ts` | The Hono app and all `/api/*` routes. Framework-only — mounted by the others. |
 | `vite-plugin.ts` | Mounts `app` as Vite middleware in dev. |
-| `standalone.ts` | Production entry: serves built assets + `serve()`. Used by Docker. |
+| `standalone.ts` | Production entry: serves built assets + `serve()` (`pnpm start`). |
 | `storage.ts` | Maps CRUD with atomic writes (write temp file, rename). |
 | `mcp-server.ts` | **Inbound** MCP server exposing mind-map tools to AI clients, including surgical node edits (see [MCP.md](MCP.md)). |
 | `mcp-stdio.ts` | stdio entry point for the inbound MCP server. |

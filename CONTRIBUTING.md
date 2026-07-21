@@ -10,7 +10,6 @@ confidence that undo/redo and layout still hold.
 | --- | --- | --- |
 | [Node.js](https://nodejs.org) | 20+ | Tested on 22/26. |
 | [pnpm](https://pnpm.io) | 9+ | The repo uses a pnpm workspace + lockfile. |
-| [Docker](https://www.docker.com) | optional | Only needed for the container workflow. |
 
 ## Local setup
 
@@ -19,9 +18,9 @@ pnpm install
 pnpm dev          # app + API on http://localhost:5454 with hot reload
 ```
 
-That's the whole loop for working on the UI, the layout engine, commands, or the API — no
-Docker required. There are no external services and no API keys: the app is fully
-self-contained (browser canvas + MCP server over one local port).
+That's the whole loop for working on the UI, the layout engine, commands, or the API.
+There are no external services and no API keys: the app is fully self-contained
+(browser canvas + MCP server over one local port).
 
 ## Verify your change
 

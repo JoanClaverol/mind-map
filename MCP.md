@@ -22,7 +22,7 @@ Edits appear **live** in a browser tab that has the map open, and the user can u
 
 The MCP server is available in two forms:
 
-- **HTTP/SSE** (when the app is running — Docker, `pnpm dev`, or `mindmap up`): `http://localhost:5454/mcp` (`mindmap up` prints its own per-session URL).
+- **HTTP/SSE** (when the app is running — `pnpm dev`, `pnpm start`, or `mindmap up`): `http://localhost:5454/mcp` (`mindmap up` prints its own per-session URL).
 - **stdio** (for clients that spawn a process): `mindmap stdio [--maps DIR]`, or `node --import tsx server/mcp-stdio.ts` from the project root.
 
 Run `mindmap config <client>` for ready-to-paste config (claude-code, claude-desktop, codex, opencode). There is no authentication; it is intended for local use only.

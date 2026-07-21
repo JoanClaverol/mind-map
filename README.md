@@ -30,7 +30,6 @@ keystrokes. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
 - [Node.js](https://nodejs.org) 20+ and [pnpm](https://pnpm.io) 9+ (`npm install -g pnpm`)
 - macOS or Linux. On Windows, use [WSL](https://learn.microsoft.com/windows/wsl/) — the
   CLI relies on Unix conventions and is untested natively.
-- [Docker](https://www.docker.com) only if you prefer running the app as a container.
 
 ## Install
 
@@ -51,7 +50,7 @@ That's the whole install. Updating later is `git pull && pnpm install && pnpm bu
 ## Step 1 — Run the app and make a first map
 
 ```bash
-pnpm dev                  # from the repo; or: docker compose up -d --build
+pnpm dev                  # hot reload; or `pnpm start` for the built app
 ```
 
 Open <http://localhost:5454>. You land in the gallery — press `n`, type a title, `Enter`.
@@ -257,7 +256,7 @@ that project's `mindmaps/` folder instead. Override the directory anytime with t
 | The client doesn't list the mindmap tools | MCP servers load at session start — restart the client/session after adding the config. In Claude Code, check with `/mcp`. |
 | AI edits don't appear in my browser | You're connected over **stdio**, which is a separate headless process. Switch the client to the **HTTP** config (`http://localhost:5454/mcp`) and make sure the app from step 1 is running. |
 | Claude Desktop says it can't start the server | GUI apps don't inherit your shell PATH — use the absolute Node path that `mindmap config claude-desktop` prints. |
-| Port 5454 is busy | Another instance (often the Docker container) owns it. Stop it, or run with `PORT=5460 pnpm start` and point the client at the new port. `mindmap up` picks a free port automatically. |
+| Port 5454 is busy | Another instance owns it. Stop it, or run with `PORT=5460 pnpm start` and point the client at the new port. `mindmap up` picks a free port automatically. |
 | Browser tab shows "Autosave failed" after updating | The tab predates a schema upgrade — reload it. |
 | Two people/tools editing the same map | It's a single-user local tool: the browser wins conflicts, and simultaneous browser tabs on one map are last-write-wins. |
 

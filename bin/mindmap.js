@@ -36,7 +36,7 @@ function findFreePort(preferred) {
       srv.once('error', () => resolve(null));
       srv.once('listening', () => srv.close(() => resolve(port)));
       // Bind exactly like standalone.ts (0.0.0.0): a 127.0.0.1 or wildcard-:: probe
-      // can succeed while 0.0.0.0:port is taken (e.g. by Docker or another session).
+      // can succeed while 0.0.0.0:port is taken (e.g. by another session).
       srv.listen(port, '0.0.0.0');
     });
   return (async () => {
@@ -195,7 +195,7 @@ function config(args) {
     2,
   );
   const httpNote =
-    'HTTP variants need the app running (pnpm dev, Docker, or `mindmap up` — up prints its own per-session URL).';
+    'HTTP variants need the app running (pnpm dev, pnpm start, or `mindmap up` — up prints its own per-session URL).';
   const sections = {
     'claude-code': `# Claude Code
 claude mcp add mindmap -- node ${binPath} stdio

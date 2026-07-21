@@ -1,9 +1,0 @@
-services:
-  mind-map:
-    build: .
-    container_name: mindmap-mcp
-    ports:
-      - "5454:5454"
-    volumes:
-      - ./maps:/app/maps
-    restart: unless-stopped
