@@ -266,6 +266,27 @@ This will create a root node "Trip to Japan" with four children, each with their
 2. Connect clusters to the main tree (or each other) with `add_relationship` arrows as the relations emerge.
 3. When a cluster's place becomes clear, attach it: `move_node` with the tree's root id. The reverse — `detach_node` — splits an overgrown branch out to stand alone.
 
+### Challenge the map (Socratic mode)
+
+When the user asks you to challenge, probe, or stress-test a map — or their understanding of
+the topic it describes — **do not add content nodes**. The understanding they're building
+comes from answering questions themselves; a complete tree you wrote is *your* model of the
+topic, not theirs. Add questions instead:
+
+1. `read_map_markdown` the whole map. Look for: unsupported claims, overlapping or
+   suspiciously tidy categories, branches that contradict each other, missing
+   counter-arguments, and ideas whose placement forces one framing where others exist.
+2. Mark each finding **on the node itself** with one `apply_ops` batch of `set_node_meta`
+   ops: icon `❓`, a `note` holding the actual question ("What evidence supports this?",
+   "How does this square with X?"), and the tag `open`. One undo step, quiet canvas.
+3. Where two ideas conflict or secretly depend on each other, draw it:
+   `add_relationship` with labels like "contradicts?", "assumes", "depends on?".
+4. In chat, list the questions briefly — then stop. Let the user answer by editing the map.
+   Only clear a ❓ (icon `""`, drop the `open` tag) or mark a node decided (✅ / `sage`)
+   when the user resolves it.
+5. Keep the tag vocabulary stable: the user finds open questions later with `find_nodes`
+   `tags: ["open"]`, or on the canvas by typing `#open` into the ⌘F search/filter.
+
 ### Restructure in one step
 
 Use `apply_ops` when a change involves several edits that belong together (split a node, regroup a branch, rename several siblings). It is atomic on disk and lands as a single Ctrl+Z for the user — much better than a stream of individual edits they'd have to undo one by one.

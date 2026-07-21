@@ -77,6 +77,18 @@ export function expandNode(draft: Draft<Doc>, nodeId: string): CommandResult {
   return { select: nodeId };
 }
 
+/** Expand every collapsed ancestor so nodeId becomes visible (search jump). */
+export function expandAncestors(draft: Draft<Doc>, nodeId: string): CommandResult {
+  if (!draft.nodes[nodeId]) return {};
+  let cur = findParentInDraft(draft, nodeId);
+  while (cur) {
+    const node = draft.nodes[cur];
+    if (node.collapsed) node.collapsed = false;
+    cur = findParentInDraft(draft, cur);
+  }
+  return { select: nodeId };
+}
+
 /** Paste branches (e.g. parsed from markdown) under a parent, with fresh ids. */
 export function pasteBranches(draft: Draft<Doc>, parentId: string, branches: FileNode[]): CommandResult {
   if (branches.length === 0) return {};

@@ -60,6 +60,12 @@ This split keeps the request handlers identical in both environments.
   all-or-nothing; the browser replays them best-effort per op (its doc may have diverged).
   After each batch the store is marked dirty so autosave re-asserts the browser's doc (the
   union of both sides) to disk — the browser wins conflicts.
+- **View state is ephemeral.** Hoist (`⌘.`), the search panel (`⌘F`), and the pinned
+  dimming filter live in the store next to selection — never inside `doc` — so they are
+  not persisted, not undoable, and invisible to MCP clients. The canvas lays out a *view*
+  of the doc ([`src/model/search.ts`](src/model/search.ts) `viewScope` re-roots at the
+  hoisted node and hides floating trees); commands still mutate the full doc, so node ids
+  stay valid across hoisting.
 - **Layout is a pure function.** [`src/layout/layout.ts`](src/layout/layout.ts) maps
   `(doc, sizes) → rectangles`. Node sizes come from
   [`src/layout/measure.ts`](src/layout/measure.ts), which measures text in an offscreen div

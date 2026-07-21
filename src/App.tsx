@@ -3,6 +3,7 @@ import { api } from './api/client';
 import { MindMapCanvas } from './canvas/MindMapCanvas';
 import { HelpOverlay } from './components/HelpOverlay';
 import { InspectorPanel } from './components/InspectorPanel';
+import { SearchPanel } from './components/SearchPanel';
 import { StatusBar } from './components/StatusBar';
 import { Toasts } from './components/Toast';
 import { Gallery } from './gallery/Gallery';
@@ -77,6 +78,7 @@ function Editor({ mapId }: { mapId: string }) {
   return (
     <>
       <MindMapCanvas />
+      <SearchPanel />
       <InspectorPanel />
       <StatusBar />
     </>

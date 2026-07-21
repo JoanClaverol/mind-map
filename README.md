@@ -127,6 +127,13 @@ Nodes appear on your canvas as the AI writes them. Then push it further:
 > *"These three ideas don't belong under marketing — pull them out into a floating tree
 > and connect it to the budget node with an arrow labeled 'depends on'."*
 
+And when the map is *your* thinking on a topic, flip the AI from author to critic:
+
+> *"Don't add anything — challenge this map. Mark weak spots with ❓ and put the question
+> in the note, tag them `open`, and draw arrows where my branches contradict each other."*
+
+Then work through the questions: `⌘F` `#open` shows every open one; answer by editing.
+
 While it works: keep editing by hand, drag nodes around, and press `⌘Z` any time — an AI
 edit (even a 50-op batch) is one undo step, and your version always wins on conflicts.
 Press `⇧I` to see the notes and tags the AI attached.
@@ -172,6 +179,10 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
 - **Floating trees** — several root trees on one canvas (XMind floating topics): brainstorm
   clusters side by side, connect them with arrows, attach/detach branches by dragging.
 - **Relationship arrows** — free directional links between any two nodes, across trees.
+- **Search & filter** (`⌘F`) — find nodes by text and `#tags` (matches inside collapsed
+  branches), jump with Enter, or pin the query as a filter that dims everything else.
+- **Hoist** (`⌘.`) — any branch becomes the temporary root, Workflowy-style: navigate,
+  edit, and fit within just that subtree; Esc brings the full map back.
 - **Inline markdown** in node text: bold, italic, code, strike, highlight, links.
 - **Node metadata, quietly** — an emoji before the text, a subtle color tint from a small
   muted palette, a dot for hidden notes, searchable tags; all editable in the `⇧I`
@@ -200,11 +211,13 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `⇧N` | New **floating tree** at the view center (a detached tree on the same canvas — connect it later with arrows, or drag it onto a node to attach) |
 | `⇧I` | **Node inspector** — view/edit the selected node's color, icon, note, and tags (panel follows the selection; Esc closes) |
 | `/` | Collapse / expand branch |
+| `⌘F` | **Search nodes** — text and `#tags`; non-matches dim as you type, `↑↓` cycle hits, `Enter` jumps (expanding collapsed branches), `⇧Enter` pins the query as a canvas filter |
+| `⌘.` | **Hoist** the selected branch — it becomes the temporary root; `⌘.` again on the hoisted root goes up one level |
 | `⇧A` | Draw an **arrow** (relationship) from the selected node — move (`hjkl`/click) to a target, `Enter` to connect, `Esc` to cancel; the label editor opens on connect |
 | `⌘C` / `⌘X` / `⌘V` | Copy / cut branch as markdown outline · paste outline as subtree |
 | `⌘Z` / `⌘⇧Z` | Undo / redo |
 | `⌘=` / `⌘-` / `⌘0` | Zoom in / out / fit |
-| `Esc` | Back to gallery |
+| `Esc` | Back out one layer: clear the pinned filter → exit hoist → back to gallery |
 | `?` | Keyboard cheatsheet — every bound command, generated from the live keymap (works in the gallery too) |
 
 **Mouse:** scroll to pan, pinch (or `⌃`+scroll) to zoom at cursor, drag empty canvas to pan,

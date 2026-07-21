@@ -34,7 +34,8 @@ function navSibling(dir: 1 | -1, axis: 'y' | 'x' = 'y'): void {
   const s = state();
   if (!s.doc || !s.selectedId) return;
   const parents = buildParentMap(s.doc);
-  const parentId = parents[s.selectedId];
+  // The hoisted node acts as the root: its real siblings are off-canvas.
+  const parentId = s.selectedId === s.hoistId ? undefined : parents[s.selectedId];
   if (parentId) {
     const siblings = s.doc.nodes[parentId].children;
     const next = siblings[siblings.indexOf(s.selectedId) + dir];
@@ -67,8 +68,15 @@ function navSibling(dir: 1 | -1, axis: 'y' | 'x' = 'y'): void {
 
 type ScreenDir = 'left' | 'right' | 'up' | 'down';
 
+/** The root the canvas currently shows: the hoisted node (⌘.) or the map root. */
+function viewRootId(): string {
+  const s = state();
+  return s.hoistId && s.doc!.nodes[s.hoistId] ? s.hoistId : s.doc!.rootId;
+}
+
 function selectParent(id: string): void {
   const s = state();
+  if (id === s.hoistId) return; // the hoisted node's parent is off-canvas
   const parentId = buildParentMap(s.doc!)[id];
   if (parentId) s.select(parentId);
 }
@@ -100,9 +108,10 @@ function navScreen(dirKey: ScreenDir): void {
   withSelection((id) => {
     const s = state();
     const style = s.doc!.layout;
+    const rootId = viewRootId(); // hoisted views re-root the layout at the hoisted node
     if (style === 'timeline') {
       // Root and phases sit on the horizontal axis; column rows are an outline.
-      const phaseRow = id === s.doc!.rootId || buildParentMap(s.doc!)[id] === s.doc!.rootId;
+      const phaseRow = id === rootId || buildParentMap(s.doc!)[id] === rootId;
       if (phaseRow) {
         if (dirKey === 'up') return selectParent(id);
         if (dirKey === 'down') return selectFirstChild(id);
@@ -118,7 +127,7 @@ function navScreen(dirKey: ScreenDir): void {
     }
     if (dirKey === 'up' || dirKey === 'down') return navSibling(dirKey === 'down' ? 1 : -1);
     if (style === 'balanced') {
-      if (id === s.doc!.rootId) return selectBalancedHalf(id, dirKey);
+      if (id === rootId) return selectBalancedHalf(id, dirKey);
       if ((getLastLayout()?.dirs.get(id) ?? 'right') === 'left') {
         return dirKey === 'left' ? selectFirstChild(id) : selectParent(id);
       }
@@ -169,10 +178,10 @@ function outdentNode(id: string): void {
 function moveScreen(dirKey: ScreenDir): void {
   withSelection((id) => {
     const s = state();
-    if (id === s.doc!.rootId) return;
+    if (id === s.doc!.rootId || id === s.hoistId) return;
     const style = s.doc!.layout;
     if (style === 'timeline') {
-      if (buildParentMap(s.doc!)[id] === s.doc!.rootId) {
+      if (buildParentMap(s.doc!)[id] === viewRootId()) {
         // Phase: reorder along the axis; ⇧J demotes it into the previous column.
         if (dirKey === 'up') return outdentNode(id); // parent is root → no-op
         if (dirKey === 'down') return indentNode(id);
@@ -265,6 +274,10 @@ export const registry: Record<string, AppCommand> = {
     run: () => {
       const s = state();
       if (!s.doc) return;
+      if (s.hoistId) {
+        s.addToast('info', 'Floating trees are hidden while hoisted — Esc to exit first');
+        return;
+      }
       s.runCommand('addFloatingTree', (d) => cmd.addFloatingTree(d, floatingTreeSpot()));
       state().startEdit('replace');
     },
@@ -282,7 +295,7 @@ export const registry: Record<string, AppCommand> = {
     run: () =>
       withSelection((id) => {
         const s = state();
-        if (id === s.doc!.rootId) return;
+        if (id === s.doc!.rootId || id === s.hoistId) return;
         s.runCommand('addSiblingBelow', (d) => cmd.addSibling(d, id, 1));
         state().startEdit('replace');
       }),
@@ -292,7 +305,7 @@ export const registry: Record<string, AppCommand> = {
     run: () =>
       withSelection((id) => {
         const s = state();
-        if (id === s.doc!.rootId) return;
+        if (id === s.doc!.rootId || id === s.hoistId) return;
         s.runCommand('addSiblingAbove', (d) => cmd.addSibling(d, id, 0));
         state().startEdit('replace');
       }),
@@ -486,9 +499,49 @@ export const registry: Record<string, AppCommand> = {
       state().setViewport(fitToContent(layout.bounds, w, h));
     },
   },
-  'view.backToGallery': {
-    description: 'Back to the map gallery',
+  'view.search': {
+    description: 'Search nodes — dims non-matches; Enter jumps, ⇧Enter pins the filter',
     run: () => {
+      if (state().doc) state().openSearch();
+    },
+  },
+  'view.hoist': {
+    description: 'Hoist the selected branch (on the hoisted root: back up one level)',
+    run: () =>
+      withSelection((id) => {
+        const s = state();
+        if (id === s.hoistId) {
+          runCommandById('view.unhoist');
+          return;
+        }
+        if (id === s.doc!.rootId) return;
+        s.setHoist(id);
+        s.requestFit();
+      }),
+  },
+  'view.unhoist': {
+    description: 'Unhoist one level (back toward the full map)',
+    run: () => {
+      const s = state();
+      if (!s.doc || !s.hoistId) return;
+      const parentId = buildParentMap(s.doc)[s.hoistId];
+      s.setHoist(parentId && parentId !== s.doc.rootId ? parentId : null);
+      s.requestFit();
+    },
+  },
+  'view.backToGallery': {
+    description: 'Back out one layer: clear the filter, exit hoist, then the gallery',
+    run: () => {
+      const s = state();
+      if (s.filterQuery) {
+        s.setFilterQuery(null);
+        return;
+      }
+      if (s.hoistId) {
+        s.setHoist(null);
+        s.requestFit();
+        return;
+      }
       window.location.hash = '#/';
     },
   },

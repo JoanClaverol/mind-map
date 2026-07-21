@@ -76,6 +76,15 @@ interface StoreState {
   helpOpen: boolean;
   /** Node inspector panel (⇧I) — plain set, never touches rev/saveState. */
   inspectorOpen: boolean;
+  /**
+   * View state (⌘. hoist, ⌘F search, pinned filter) — ephemeral like selection:
+   * plain set, never persisted, never in undo history.
+   */
+  hoistId: string | null;
+  searchOpen: boolean;
+  searchQuery: string;
+  /** A search query pinned as a canvas filter (⇧Enter) — non-matches dim until Esc. */
+  filterQuery: string | null;
 
   loadMap(map: MapFile): void;
   closeMap(): void;
@@ -124,6 +133,12 @@ interface StoreState {
   toggleHelp(): void;
   setInspectorOpen(open: boolean): void;
   toggleInspector(): void;
+  setHoist(id: string | null): void;
+  /** Open the search panel, seeding the input from a pinned filter if one is active. */
+  openSearch(): void;
+  closeSearch(): void;
+  setSearchQuery(query: string): void;
+  setFilterQuery(query: string | null): void;
 }
 
 function clampSelection(doc: Doc, id: string | null): string {
@@ -158,6 +173,10 @@ export const useStore = create<StoreState>((set, get) => ({
   galleryFolderPicker: null,
   helpOpen: false,
   inspectorOpen: false,
+  hoistId: null,
+  searchOpen: false,
+  searchQuery: '',
+  filterQuery: null,
 
   loadMap(map) {
     const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
@@ -180,6 +199,10 @@ export const useStore = create<StoreState>((set, get) => ({
       undoStack: [],
       redoStack: [],
       inspectorOpen: false,
+      hoistId: null,
+      searchOpen: false,
+      searchQuery: '',
+      filterQuery: null,
     });
   },
 
@@ -201,6 +224,10 @@ export const useStore = create<StoreState>((set, get) => ({
       undoStack: [],
       redoStack: [],
       inspectorOpen: false,
+      hoistId: null,
+      searchOpen: false,
+      searchQuery: '',
+      filterQuery: null,
     });
   },
 
@@ -424,6 +451,26 @@ export const useStore = create<StoreState>((set, get) => ({
 
   toggleInspector() {
     set((s) => ({ inspectorOpen: !s.inspectorOpen }));
+  },
+
+  setHoist(id) {
+    set({ hoistId: id });
+  },
+
+  openSearch() {
+    set((s) => ({ searchOpen: true, searchQuery: s.filterQuery ?? '' }));
+  },
+
+  closeSearch() {
+    set({ searchOpen: false, searchQuery: '' });
+  },
+
+  setSearchQuery(query) {
+    set({ searchQuery: query });
+  },
+
+  setFilterQuery(query) {
+    set({ filterQuery: query });
   },
 
 

@@ -4,6 +4,7 @@ import { DEFAULT_KEYMAP, loadKeymapOverrides, resolveKeymap } from '../hotkeys/k
 import { layoutTree } from '../layout/layout';
 import { measureText } from '../layout/measure';
 import { floatingEntry, subtreeIds, visibleIds } from '../model/doc';
+import { searchMatches, viewScope } from '../model/search';
 import type { Position } from '../model/types';
 import { addFloatingTree, detachNode, moveNode, moveTree } from '../state/commands';
 import { runCommandById } from '../state/registry';
@@ -47,6 +48,10 @@ export function MindMapCanvas() {
   const selectedRelId = useStore((s) => s.selectedRelId);
   const editingRel = useStore((s) => s.editingRel);
   const viewport = useStore((s) => s.viewport);
+  const hoistId = useStore((s) => s.hoistId);
+  const searchOpen = useStore((s) => s.searchOpen);
+  const searchQuery = useStore((s) => s.searchQuery);
+  const filterQuery = useStore((s) => s.filterQuery);
   const hostRef = useRef<HTMLDivElement>(null);
 
   const dragRef = useRef<DragRef | null>(null);
@@ -56,21 +61,36 @@ export function MindMapCanvas() {
 
   const keymapIndex = useMemo(() => buildIndex(resolveKeymap(DEFAULT_KEYMAP, loadKeymapOverrides())), []);
 
+  // The hoisted node vanished (delete, undo, AI edit) — fall back to the full map.
+  useEffect(() => {
+    if (hoistId && doc && !doc.nodes[hoistId]) useStore.getState().setHoist(null);
+  }, [hoistId, doc]);
+
+  // What the canvas shows: the full doc, or just the hoisted branch (⌘.).
+  const viewDoc = useMemo(() => (doc ? viewScope(doc, hoistId) : null), [doc, hoistId]);
+
   const layout = useMemo(() => {
-    if (!doc) return null;
-    const ids = visibleIds(doc);
-    const sizes = new Map(ids.map((id) => [id, measureText(doc.nodes[id].text, doc.nodes[id].icon)]));
-    const result = layoutTree(doc, (id) => sizes.get(id)!);
+    if (!viewDoc) return null;
+    const ids = visibleIds(viewDoc);
+    const sizes = new Map(ids.map((id) => [id, measureText(viewDoc.nodes[id].text, viewDoc.nodes[id].icon)]));
+    const result = layoutTree(viewDoc, (id) => sizes.get(id)!);
     setLastLayout(result);
     return result;
-  }, [doc]);
+  }, [viewDoc]);
+
+  // Live search (panel open) or a pinned filter dims every non-matching node.
+  const activeQuery = searchOpen ? searchQuery : (filterQuery ?? '');
+  const matchSet = useMemo(
+    () => (viewDoc && activeQuery.trim() ? new Set(searchMatches(viewDoc, activeQuery)) : null),
+    [viewDoc, activeQuery],
+  );
 
   const draggedId = drag?.nodeId ?? null;
   const draggedSubtree = useMemo(
     () => (draggedId && doc ? new Set(subtreeIds(doc, draggedId)) : null),
     [draggedId, doc],
   );
-  const floatingRoots = useMemo(() => new Set(doc?.floating.map((f) => f.rootId)), [doc]);
+  const floatingRoots = useMemo(() => new Set(viewDoc?.floating.map((f) => f.rootId)), [viewDoc]);
 
   useEffect(() => {
     setCanvasHost(hostRef.current);
@@ -116,11 +136,15 @@ export function MindMapCanvas() {
       const currentLayout = getLastLayout();
       if (!s.doc || !currentLayout) return;
       const { x: wx, y: wy } = screenToWorld(s.viewport, host.getBoundingClientRect(), ev.clientX, ev.clientY);
-      const target = resolveDropTarget(s.doc, currentLayout, d.nodeId, wx, wy);
+      let target = resolveDropTarget(s.doc, currentLayout, d.nodeId, wx, wy);
+      // Hoisted view: the hoisted root's real parent is off-canvas — a sibling
+      // drop beside it would land the branch somewhere invisible. Reject it.
+      if (target && !currentLayout.rects.has(target.parentId)) target = null;
       // Far from every node = the detach zone (drop becomes a floating tree there).
       // The main root never detaches; the margin keeps sloppy drops harmless.
+      // Hoisted views hide floating trees, so detaching there is disabled too.
       let detachAt: Position | null = null;
-      if (!target && d.nodeId !== s.doc.rootId && distanceToNearestRect(currentLayout, wx, wy) >= DETACH_MARGIN) {
+      if (!target && d.nodeId !== s.doc.rootId && !s.hoistId && distanceToNearestRect(currentLayout, wx, wy) >= DETACH_MARGIN) {
         detachAt = { x: wx - d.grabDX, y: wy - d.grabDY };
       }
       const changed =
@@ -275,12 +299,16 @@ export function MindMapCanvas() {
     if (!host) return;
     const s = useStore.getState();
     if (!s.doc || s.editing) return;
+    if (s.hoistId) {
+      s.addToast('info', 'Floating trees are hidden while hoisted — Esc to exit first');
+      return;
+    }
     const p = screenToWorld(s.viewport, host.getBoundingClientRect(), e.clientX, e.clientY);
     s.runCommand('addFloatingTree', (draft) => addFloatingTree(draft, p));
     useStore.getState().startEdit('replace');
   };
 
-  if (!doc || !layout) return <div className="canvas-host" ref={hostRef} />;
+  if (!doc || !viewDoc || !layout) return <div className="canvas-host" ref={hostRef} />;
 
   const editingRect = editing ? layout.rects.get(editing.nodeId) : undefined;
   const indicator = drag?.target?.indicator ?? null;
@@ -352,8 +380,8 @@ export function MindMapCanvas() {
                 rect={rect}
                 dir={layout.dirs.get(id) ?? 'right'}
                 selected={id === selectedId}
-                isRoot={id === doc.rootId || floatingRoots.has(id)}
-                dimmed={draggedSubtree?.has(id) ?? false}
+                isRoot={id === viewDoc.rootId || floatingRoots.has(id)}
+                dimmed={(draggedSubtree?.has(id) ?? false) || (matchSet !== null && !matchSet.has(id))}
                 linkSource={id === linkSourceId}
                 onPressStart={(e) => handleNodePress(id, e)}
                 onEdit={() => {

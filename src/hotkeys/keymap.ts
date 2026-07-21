@@ -64,6 +64,8 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'shift+i', context: 'nav', command: 'node.toggleInspector' },
   // view (shift+s shadows type-to-edit for capital S, like H/J/K/L/R)
   { combo: 'shift+s', context: 'nav', command: 'map.cycleLayout' },
+  { combo: 'mod+f', context: 'nav', command: 'view.search' },
+  { combo: 'mod+.', context: 'nav', command: 'view.hoist' },
   { combo: 'mod+=', context: 'nav', command: 'view.zoomIn' },
   { combo: 'mod+shift+=', context: 'nav', command: 'view.zoomIn' },
   { combo: 'mod+-', context: 'nav', command: 'view.zoomOut' },
