@@ -85,8 +85,9 @@ The MCP server (guide: [MCP.md](MCP.md)) exposes the full editing surface:
 | | Tools |
 | --- | --- |
 | Read | `read_map`, `read_map_markdown` (id-annotated + arrows), `get_subtree`, `list_maps` |
-| Search | `find_nodes` — locate ideas across one or **all** maps without reading them whole |
+| Search | `find_nodes` — locate ideas by text and/or tags across one or **all** maps without reading them whole |
 | Edit nodes | `add_nodes`, `edit_node`, `move_node`, `delete_node` |
+| Annotate | `set_node_meta` — color, icon, hidden note, tags; renders quietly on the canvas |
 | Floating trees | `create_tree`, `detach_node` — detached trees on the canvas; `move_node` on a tree root attaches it |
 | Connect ideas | `add_relationship`, `edit_relationship`, `delete_relationship` — labeled arrows between any two nodes, across trees |
 | Batch | `apply_ops` — up to 50 edits, atomic on disk, **one undo step** for you |
@@ -102,6 +103,9 @@ The MCP server (guide: [MCP.md](MCP.md)) exposes the full editing surface:
   clusters side by side, connect them with arrows, attach/detach branches by dragging.
 - **Relationship arrows** — free directional links between any two nodes, across trees.
 - **Inline markdown** in node text: bold, italic, code, strike, highlight, links.
+- **Node metadata, quietly** — an emoji before the text, a subtle color tint from a small
+  muted palette, a dot for hidden notes, searchable tags; all editable in the `⇧I`
+  inspector and prime territory for your AI to mark status (❓ open, ✅ decided…).
 - **Markdown interop** — copy a branch as a nested list; paste any outline (Obsidian, Notes,
   XMind exports) as a subtree.
 - **Local-first storage** — one JSON file per map, no database, no cloud.
@@ -126,6 +130,7 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `⇧L` / `⇧H` | Move node right / left on screen (nest/un-nest; reorder in org chart) |
 | `⇧S` | Cycle layout structure: right tree → balanced map → org chart → roadmap (per map, undoable) |
 | `⇧N` | New **floating tree** at the view center (a detached tree on the same canvas — connect it later with arrows, or drag it onto a node to attach) |
+| `⇧I` | **Node inspector** — view/edit the selected node's color, icon, note, and tags (panel follows the selection; Esc closes) |
 | `⇧R` | Record a voice note → transcript becomes nodes under the selection (press again to stop, Esc to discard) |
 | `/` | Collapse / expand branch |
 | `⇧A` | Draw an **arrow** (relationship) from the selected node — move (`hjkl`/click) to a target, `Enter` to connect, `Esc` to cancel; the label editor opens on connect |
@@ -148,9 +153,10 @@ to attach the whole tree, or to empty canvas to reposition it. `Esc` cancels a d
 **Click an arrow** (or its label) to select it — `Enter` edits its label, `Delete`/`Backspace`
 removes it, `Esc` deselects.
 
-> Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧N` adds a floating tree, `⇧R` records, `⇧S`
-> switches structure, and `⇧T` saves a note, typing a *capital* A/H/J/K/L/N/R/S/T won't
-> trigger type-to-edit — press `Space` to edit instead, or unbind them via `localStorage.keymap`.
+> Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧I` opens the inspector, `⇧N` adds a floating
+> tree, `⇧R` records, `⇧S` switches structure, and `⇧T` saves a note, typing a *capital*
+> A/H/I/J/K/L/N/R/S/T won't trigger type-to-edit — press `Space` to edit instead, or unbind
+> them via `localStorage.keymap`.
 
 ## Gallery
 

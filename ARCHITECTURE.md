@@ -73,8 +73,9 @@ This split keeps the request handlers identical in both environments.
 - **Layout is a pure function.** [`src/layout/layout.ts`](src/layout/layout.ts) maps
   `(doc, sizes) → rectangles`. Node sizes come from
   [`src/layout/measure.ts`](src/layout/measure.ts), which measures text in an offscreen div
-  using the same `.node-text` CSS as the real nodes — so measured and rendered sizes always
-  agree. Four structures are supported: `right` (logic chart, default), `balanced` (both
+  using the same `.node-text` CSS as the real nodes — and the same `renderNodeContent`
+  HTML (inline markdown + optional icon, cache keyed by both) — so measured and rendered
+  sizes always agree. Four structures are supported: `right` (logic chart, default), `balanced` (both
   sides of the root), `down` (org chart), and `timeline` (roadmap). **Floating trees** always
   lay out as compact right-trees, placed by translating each tree so its root lands on the
   stored `pos`. The result includes a
@@ -126,10 +127,10 @@ interface FileNode {
   text: string;          // node label; supports inline markdown
   collapsed?: boolean;
   todoId?: string;       // set once pushed to the external todo service
-  color?: string;        // reserved for node metadata (phase 3) — round-tripped, no UI yet
-  icon?: string;         // reserved
-  note?: string;         // reserved
-  tags?: string[];       // reserved
+  color?: string;        // palette name (NODE_COLORS) — subtle tint on the canvas
+  icon?: string;         // leading emoji, rendered before the text (never part of text)
+  note?: string;         // hidden longer text — dot on canvas, shown in the ⇧I inspector
+  tags?: string[];       // searchable labels (find_nodes)
   children: FileNode[];
 }
 

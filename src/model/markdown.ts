@@ -4,21 +4,30 @@ import type { Doc, FileNode } from './types';
  * Serialize a branch as a nested markdown list. The branch root is depth 0;
  * node text is flattened to one line. The default (no opts) is the clipboard
  * interop format and must stay byte-identical. `ids` annotates every line with
- * `(id: …)` for MCP reads; `maxDepth` stops descending and marks the cut-off.
+ * `(id: …)` for MCP reads; `maxDepth` stops descending and marks the cut-off;
+ * `meta` renders node metadata — icon before the text, `[color]` and `#tags`
+ * after the id, and the note as an indented `>` line under the bullet. Meta
+ * annotations are read-only decoration: never feed them back into a parser.
  */
 export function branchToMarkdown(
   doc: Doc,
   nodeId: string,
-  opts?: { ids?: boolean; maxDepth?: number },
+  opts?: { ids?: boolean; maxDepth?: number; meta?: boolean },
 ): string {
   const lines: string[] = [];
   const walk = (id: string, depth: number) => {
     const node = doc.nodes[id];
     const text = node.text.replace(/\s+/g, ' ').trim();
+    const icon = opts?.meta && node.icon ? `${node.icon} ` : '';
     const idTag = opts?.ids ? ` (id: ${id})` : '';
+    const color = opts?.meta && node.color ? ` [${node.color}]` : '';
+    const tags = opts?.meta && node.tags?.length ? ` ${node.tags.map((t) => `#${t}`).join(' ')}` : '';
     const cutOff = opts?.maxDepth !== undefined && depth >= opts.maxDepth && node.children.length > 0;
     const hidden = cutOff ? ` … (+${node.children.length} children hidden)` : '';
-    lines.push(`${'  '.repeat(depth)}- ${text}${idTag}${hidden}`);
+    lines.push(`${'  '.repeat(depth)}- ${icon}${text}${idTag}${color}${tags}${hidden}`);
+    if (opts?.meta && node.note) {
+      lines.push(`${'  '.repeat(depth + 1)}> ${node.note.replace(/\s+/g, ' ').trim()}`);
+    }
     if (cutOff) return;
     for (const child of node.children) walk(child, depth + 1);
   };

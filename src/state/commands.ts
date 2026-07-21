@@ -1,7 +1,7 @@
 import type { Draft } from 'immer';
 import { newId } from '../model/doc';
 import { applyDocOp, assignIds } from '../model/ops';
-import type { Doc, DocNode, FileNode, LayoutStyle, Position } from '../model/types';
+import type { Doc, DocNode, FileNode, LayoutStyle, NodeColor, Position } from '../model/types';
 
 /**
  * Doc commands: pure mutations over an Immer draft. The store's executor wraps
@@ -126,6 +126,16 @@ export function setLayoutStyle(draft: Draft<Doc>, style: LayoutStyle): CommandRe
   if (draft.layout === style) return {}; // zero patches → no history entry
   draft.layout = style;
   return {};
+}
+
+/** Update node metadata fields (undefined = leave, null = clear) — see set_node_meta op. */
+export function setNodeMeta(
+  draft: Draft<Doc>,
+  nodeId: string,
+  meta: { color?: NodeColor | null; icon?: string | null; note?: string | null; tags?: string[] | null },
+): CommandResult {
+  const r = applyDocOp(draft, { type: 'set_node_meta', nodeId, ...meta });
+  return r.ok ? { select: r.select } : {};
 }
 
 export function setTodoId(draft: Draft<Doc>, nodeId: string, todoId: string): CommandResult {

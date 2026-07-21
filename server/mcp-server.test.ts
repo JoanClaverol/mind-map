@@ -520,6 +520,113 @@ describe('mcp-server tools', () => {
     expect(readFileSync(file, 'utf8')).toBe(before);
   });
 
+  it('set_node_meta sets, clears via sentinels, rejects bad colors; reads show annotations', async () => {
+    const client = await createClient();
+    const createText = textContent(
+      await client.callTool({
+        name: 'create_map_from_outline',
+        arguments: { title: 'Meta', markdown: '- Pricing model\n- Other' },
+      }),
+    );
+    const mapId = createText.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+    const file = path.join(mapsDir, `${mapId}.json`);
+    const nodeId = (JSON.parse(readFileSync(file, 'utf8')) as MapFile).root.children[0].id;
+
+    const set = await client.callTool({
+      name: 'set_node_meta',
+      arguments: { map_id: mapId, node_id: nodeId, color: 'sage', icon: '❓', note: 'open question', tags: ['pricing', 'v2'] },
+    });
+    expect(set.isError).toBeFalsy();
+    let saved = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    expect(saved.root.children[0]).toMatchObject({
+      color: 'sage',
+      icon: '❓',
+      note: 'open question',
+      tags: ['pricing', 'v2'],
+    });
+
+    const md = textContent(await client.callTool({ name: 'read_map_markdown', arguments: { map_id: mapId } }));
+    expect(md).toContain(`- ❓ Pricing model (id: ${nodeId}) [sage] #pricing #v2`);
+    expect(md).toContain('  > open question');
+
+    const bad = await client.callTool({
+      name: 'set_node_meta',
+      arguments: { map_id: mapId, node_id: nodeId, color: 'crimson' },
+    });
+    expect(bad.isError).toBe(true); // zod enum rejects before the op even runs
+
+    const cleared = await client.callTool({
+      name: 'set_node_meta',
+      arguments: { map_id: mapId, node_id: nodeId, color: 'none', icon: '', note: '', tags: [] },
+    });
+    expect(cleared.isError).toBeFalsy();
+    saved = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    expect(saved.root.children[0].color).toBeUndefined();
+    expect(saved.root.children[0].icon).toBeUndefined();
+    expect(saved.root.children[0].note).toBeUndefined();
+    expect(saved.root.children[0].tags).toBeUndefined();
+  });
+
+  it('apply_ops with a bad set_node_meta aborts atomically; find_nodes filters by tags', async () => {
+    const client = await createClient();
+    const createText = textContent(
+      await client.callTool({
+        name: 'create_map_from_outline',
+        arguments: { title: 'TagSearch', markdown: '- Alpha\n- Beta' },
+      }),
+    );
+    const mapId = createText.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+    const file = path.join(mapsDir, `${mapId}.json`);
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
+    const [alpha, beta] = raw.root.children;
+
+    await client.callTool({
+      name: 'apply_ops',
+      arguments: {
+        map_id: mapId,
+        ops: [
+          { op: 'set_node_meta', node_id: alpha.id, tags: ['urgent', 'ops'] },
+          { op: 'set_node_meta', node_id: beta.id, tags: ['ops'] },
+        ],
+      },
+    });
+
+    // atomic abort: valid eop then an op with a too-long tag
+    const before = readFileSync(file, 'utf8');
+    const failing = await client.callTool({
+      name: 'apply_ops',
+      arguments: {
+        map_id: mapId,
+        ops: [
+          { op: 'edit_node', node_id: alpha.id, text: 'changed' },
+          { op: 'set_node_meta', node_id: beta.id, tags: ['x'.repeat(25)] },
+        ],
+      },
+    });
+    expect(failing.isError).toBe(true);
+    expect(textContent(failing)).toContain('op 1 (set_node_meta)');
+    expect(readFileSync(file, 'utf8')).toBe(before);
+
+    // tags-only search, AND semantics
+    const both = textContent(
+      await client.callTool({ name: 'find_nodes', arguments: { map_id: mapId, tags: ['ops', 'urgent'] } }),
+    );
+    expect(both).toContain(alpha.id);
+    expect(both).not.toContain(beta.id);
+    expect(both).toContain('#urgent #ops');
+
+    // query + tags combined
+    const combined = textContent(
+      await client.callTool({ name: 'find_nodes', arguments: { map_id: mapId, query: 'beta', tags: ['ops'] } }),
+    );
+    expect(combined).toContain(beta.id);
+    expect(combined).not.toContain(alpha.id);
+
+    // neither → schema-level error
+    const neither = await client.callTool({ name: 'find_nodes', arguments: { map_id: mapId } });
+    expect(neither.isError).toBe(true);
+  });
+
   it('find_nodes searches one map or all maps with paths', async () => {
     const client = await createClient();
     const mk = async (title: string, markdown: string) => {

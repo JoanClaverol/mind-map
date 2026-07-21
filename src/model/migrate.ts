@@ -1,23 +1,52 @@
 import {
   LAYOUT_STYLES,
+  MAX_ICON_LEN,
+  MAX_NOTE_LEN,
+  MAX_TAGS,
+  MAX_TAG_LEN,
+  NODE_COLORS,
   SCHEMA_VERSION,
   normalizeFolderName,
   type FileNode,
   type FloatingTree,
   type LayoutStyle,
   type MapFile,
+  type NodeColor,
 } from './types';
 
 export class MigrationError extends Error {}
 
-/** Drop malformed phase-3 metadata fields wherever hand-edits put them. */
+/**
+ * Salvage node metadata from hand-edited files: keep what fits the contract,
+ * trim/truncate what nearly does, drop the rest. (Ops, by contrast, REJECT
+ * invalid metadata loudly — LLMs need actionable errors, files need tolerance.)
+ */
 function sanitizeNodeMeta(node: FileNode): void {
-  if (node.color !== undefined && typeof node.color !== 'string') delete node.color;
-  if (node.icon !== undefined && typeof node.icon !== 'string') delete node.icon;
-  if (node.note !== undefined && typeof node.note !== 'string') delete node.note;
+  if (node.color !== undefined && !NODE_COLORS.includes(node.color as NodeColor)) delete node.color;
+  if (node.icon !== undefined) {
+    const icon = typeof node.icon === 'string' ? node.icon.trim() : '';
+    if (icon && icon.length <= MAX_ICON_LEN) node.icon = icon;
+    else delete node.icon;
+  }
+  if (node.note !== undefined) {
+    const note = typeof node.note === 'string' ? node.note.trim().slice(0, MAX_NOTE_LEN) : '';
+    if (note) node.note = note;
+    else delete node.note;
+  }
   if (node.tags !== undefined) {
     if (Array.isArray(node.tags)) {
-      node.tags = node.tags.filter((t): t is string => typeof t === 'string');
+      const seen = new Set<string>();
+      node.tags = node.tags
+        .filter((t): t is string => typeof t === 'string')
+        .map((t) => t.trim())
+        .filter((t) => {
+          if (!t || t.length > MAX_TAG_LEN) return false;
+          const key = t.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, MAX_TAGS);
       if (node.tags.length === 0) delete node.tags;
     } else {
       delete node.tags;

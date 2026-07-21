@@ -6,6 +6,20 @@ export interface Position {
   y: number;
 }
 
+/**
+ * Node color names — a small muted palette derived from the app's zen accents.
+ * The single source of truth for ops validation, migrate sanitation, the
+ * inspector swatches, the MCP enum, and the `.node-rect.color-*` CSS classes.
+ */
+export const NODE_COLORS = ['sage', 'mist', 'clay', 'sand', 'rose'] as const;
+export type NodeColor = (typeof NODE_COLORS)[number];
+
+// Caps for node metadata (enforced by ops; salvaged-to by migrate).
+export const MAX_ICON_LEN = 16;
+export const MAX_NOTE_LEN = 2000;
+export const MAX_TAGS = 8;
+export const MAX_TAG_LEN = 24;
+
 /** How the tree is arranged on the canvas. */
 export type LayoutStyle = 'right' | 'balanced' | 'down' | 'timeline';
 
@@ -25,12 +39,13 @@ export interface FileNode {
   collapsed?: boolean;
   /** segon-cervell todo id once this node has been pushed. */
   todoId?: string;
-  // Reserved for phase 3 (node styling/annotations). Schema + round-trip only
-  // today: no UI or ops touch these yet, but normalize/denormalize carry them
-  // so a future edit is never stripped by autosave.
+  /** Node color name (see NODE_COLORS) — typed loosely because disk is untrusted; migrate narrows. */
   color?: string;
+  /** Leading emoji/glyph rendered before the text (never part of `text`). */
   icon?: string;
+  /** Longer hidden text behind the node; shown in the inspector, dot on canvas. */
   note?: string;
+  /** Free labels, searchable via find_nodes. */
   tags?: string[];
   children: FileNode[];
 }
@@ -129,7 +144,7 @@ export interface DocNode {
   text: string;
   collapsed: boolean;
   todoId?: string;
-  // Reserved phase-3 metadata — see FileNode.
+  // Node metadata — see FileNode.
   color?: string;
   icon?: string;
   note?: string;

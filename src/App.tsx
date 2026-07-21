@@ -4,6 +4,7 @@ import { discardRecording } from './audio/recorder';
 import { MindMapCanvas } from './canvas/MindMapCanvas';
 import { ChatPanel } from './components/ChatPanel';
 import { HelpOverlay } from './components/HelpOverlay';
+import { InspectorPanel } from './components/InspectorPanel';
 import { StatusBar } from './components/StatusBar';
 import { Toasts } from './components/Toast';
 import { TranscriptPanel } from './components/TranscriptPanel';
@@ -82,6 +83,7 @@ function Editor({ mapId }: { mapId: string }) {
     <>
       <MindMapCanvas />
       <ChatPanel />
+      <InspectorPanel />
       <TranscriptPanel />
       <StatusBar />
     </>

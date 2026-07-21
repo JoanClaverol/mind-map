@@ -115,3 +115,36 @@ describe('markdownToBranches', () => {
     expect(markdownToBranches('  \n \n')).toEqual([]);
   });
 });
+
+describe('branchToMarkdown meta annotations', () => {
+  const doc = normalize({
+    id: 'root',
+    text: 'Launch plan',
+    icon: '🚀',
+    color: 'sage',
+    tags: ['ops', 'q3'],
+    note: 'Kickoff moved to March;\n  waiting on budget.',
+    children: [
+      { id: 'a', text: 'Plain child', children: [{ id: 'a1', text: 'Deep', children: [] }] },
+    ],
+  });
+
+  it('renders icon, id, [color], #tags in order, and the note as an indented > line', () => {
+    const out = branchToMarkdown(doc, 'root', { ids: true, meta: true });
+    expect(out.split('\n')).toEqual([
+      '- 🚀 Launch plan (id: root) [sage] #ops #q3',
+      '  > Kickoff moved to March; waiting on budget.',
+      '  - Plain child (id: a)',
+      '    - Deep (id: a1)',
+    ]);
+  });
+
+  it('meta composes with maxDepth cut-off', () => {
+    const out = branchToMarkdown(doc, 'root', { ids: true, meta: true, maxDepth: 1 });
+    expect(out).toContain('- Plain child (id: a) … (+1 children hidden)');
+  });
+
+  it('PIN: the no-opts clipboard output is byte-identical on a meta-carrying doc', () => {
+    expect(branchToMarkdown(doc, 'root')).toBe('- Launch plan\n  - Plain child\n    - Deep');
+  });
+});

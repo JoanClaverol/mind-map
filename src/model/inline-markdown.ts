@@ -96,3 +96,14 @@ export function renderInlineMarkdown(raw: string): string {
   cache.set(raw, html);
   return html;
 }
+
+/**
+ * The exact HTML NodeView renders AND measure.ts measures — icon included.
+ * Both sides MUST use this function (the measure-mirror invariant): an icon
+ * added only on one side makes measured and rendered widths drift. The icon
+ * is escaped plain text, never markdown-parsed, and lives only in node.icon.
+ */
+export function renderNodeContent(text: string, icon?: string): string {
+  const body = renderInlineMarkdown(text);
+  return icon ? `<span class="node-icon">${escapeHtml(icon)}</span>${body}` : body;
+}

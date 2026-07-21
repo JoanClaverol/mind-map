@@ -299,6 +299,10 @@ export const registry: Record<string, AppCommand> = {
         state().startEdit('replace');
       }),
   },
+  'node.toggleInspector': {
+    description: 'Inspect the selected node (color, icon, note, tags)',
+    run: () => state().toggleInspector(),
+  },
   'node.editAppend': {
     description: 'Edit the selected node (cursor at end)',
     run: () => state().startEdit('append'),

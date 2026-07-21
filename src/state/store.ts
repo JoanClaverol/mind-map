@@ -93,6 +93,8 @@ interface StoreState {
   galleryFolderPicker: { mapId: string; query: string } | null;
   /** Keyboard cheatsheet overlay (toggled with ?). */
   helpOpen: boolean;
+  /** Node inspector panel (⇧I) — plain set, never touches rev/saveState. */
+  inspectorOpen: boolean;
   /**
    * "Chat with this map" panel. Like audio/help, plain `set` only — never enters
    * history or autosave. Ephemeral: reset whenever a map is loaded or closed.
@@ -149,6 +151,8 @@ interface StoreState {
   closeFolderPicker(): void;
   setHelpOpen(open: boolean): void;
   toggleHelp(): void;
+  setInspectorOpen(open: boolean): void;
+  toggleInspector(): void;
   setChatOpen(open: boolean): void;
   addChatMessage(msg: ChatMessage): void;
   /** Append streamed text to the most recent message (the in-flight assistant turn). */
@@ -197,6 +201,7 @@ export const useStore = create<StoreState>((set, get) => ({
   galleryCollapsed: new Set(),
   galleryFolderPicker: null,
   helpOpen: false,
+  inspectorOpen: false,
   chatOpen: false,
   chatMessages: [],
   chatStreaming: false,
@@ -223,6 +228,7 @@ export const useStore = create<StoreState>((set, get) => ({
       redoStack: [],
       pendingTodo: [],
       pendingNote: [],
+      inspectorOpen: false,
       chatOpen: false,
       chatMessages: [],
       chatStreaming: false,
@@ -248,6 +254,7 @@ export const useStore = create<StoreState>((set, get) => ({
       redoStack: [],
       pendingTodo: [],
       pendingNote: [],
+      inspectorOpen: false,
       chatOpen: false,
       chatMessages: [],
       chatStreaming: false,
@@ -483,6 +490,14 @@ export const useStore = create<StoreState>((set, get) => ({
 
   toggleHelp() {
     set((s) => ({ helpOpen: !s.helpOpen }));
+  },
+
+  setInspectorOpen(open) {
+    set({ inspectorOpen: open });
+  },
+
+  toggleInspector() {
+    set((s) => ({ inspectorOpen: !s.inspectorOpen }));
   },
 
   setChatOpen(open) {

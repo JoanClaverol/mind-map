@@ -10,6 +10,7 @@ mindmap-mcp is a local, keyboard-first mind mapping canvas. Maps are stored as p
 - List existing maps; **search node text across one or all maps**.
 - Read a map as JSON or as an id-annotated markdown outline (including its floating trees and relationship arrows), or read just one branch.
 - **Edit an existing map surgically**: add, edit, move, or delete specific nodes.
+- **Annotate nodes**: color (small named palette), a leading icon/emoji, a hidden note, and searchable tags — use these to mark status (❓ open question, ✅ decided…) without cluttering the canvas.
 - **Work with floating trees**: create detached trees on the canvas (`create_tree`), split a branch out (`detach_node`), attach a tree under a node (`move_node` on its root).
 - **Connect ideas with relationship arrows**: free directional cross-links between any two nodes — including across trees.
 - **Batch several edits atomically** with `apply_ops`.
@@ -51,12 +52,15 @@ Returns all saved maps with id, title, node count, and last update time.
 # Trip to Japan
 
 - Trip to Japan (id: aB3xY9kQ2mZp)
-  - Flights (id: q7Rt2LwN8vXc)
+  - ✈️ Flights (id: q7Rt2LwN8vXc) [sage] #booked
+    > Prices locked in — check baggage rules before packing.
   - Accommodation (id: dF5gH1jK3sQw)
 
 ## Relationships
 - [rM4nP6bV0zXy] q7Rt2LwN8vXc ("Flights") -> dF5gH1jK3sQw ("Accommodation") — "book together"
 ```
+
+Node metadata renders inline: the icon before the text, `[color]` and `#tags` after the id, and the note as an indented `>` line. **These annotations are read-only decoration — never paste them back into an outline** (`create_map_from_outline`, `add_nodes`): the parser would treat `>` lines as continuation text. Use `set_node_meta` to write metadata.
 
 ### `get_subtree`
 
@@ -66,9 +70,9 @@ Returns all saved maps with id, title, node count, and last update time.
 
 ### `find_nodes`
 
-- Arguments: `{ query: string, map_id?: string }`
-- Case-insensitive substring search over node text — one map, or **all maps** when `map_id` is omitted.
-- Returns hits as `- <node_id> "text" — map <map_id> ("Title"), path: Root > Parent > …`, capped at 50 (most recently updated maps first). Use this to locate ids before editing instead of reading whole maps.
+- Arguments: `{ query?: string, tags?: string[], map_id?: string }` — provide `query`, `tags`, or both.
+- Case-insensitive substring search over node text, and/or tag filtering (a node must carry **all** requested tags) — one map, or **all maps** when `map_id` is omitted.
+- Returns hits as `- <node_id> "text" — map <map_id> ("Title"), path: Root > Parent > … #tag1 #tag2`, capped at 50 (most recently updated maps first). Use this to locate ids before editing instead of reading whole maps.
 
 ### `add_nodes`
 
@@ -106,6 +110,13 @@ Returns all saved maps with id, title, node count, and last update time.
 - Splits a node (with its whole subtree) out of its parent so it becomes a floating tree. The main root and existing floating roots cannot be detached.
 - To re-attach any floating tree, call `move_node` with its root id and a new parent.
 
+### `set_node_meta`
+
+- Arguments: `{ map_id: string, node_id: string, color?: string, icon?: string, note?: string, tags?: string[] }`
+- Partial update: absent fields are left untouched. Clearing: `color: "none"`, `icon: ""`, `note: ""`, `tags: []` (the array always replaces the whole list).
+- `color` is one of the palette names `sage | mist | clay | sand | rose` — rendered as a subtle tint. `icon` is a leading emoji (max 16 chars) shown before the text. `note` (max 2000 chars) is hidden behind the node — a dot marks it on canvas; the user reads it in the inspector. `tags` (max 8 × 24 chars) are searchable via `find_nodes`.
+- Suggested conventions: ❓ + a note for open questions, ✅ or `sage` for decided, `rose` for blocked/risky — tell the user what your markings mean.
+
 ### `add_relationship`
 
 - Arguments: `{ map_id: string, from_id: string, to_id: string, label?: string }`
@@ -138,7 +149,8 @@ Returns all saved maps with id, title, node count, and last update time.
   { "op": "edit_relationship", "relationship_id": "…", "label": "…" },
   { "op": "delete_relationship", "relationship_id": "…" },
   { "op": "create_tree", "markdown": "- New cluster\n  - Spark", "x": 500, "y": 100 },
-  { "op": "detach_node", "node_id": "…", "x": 700, "y": 40 }
+  { "op": "detach_node", "node_id": "…", "x": 700, "y": 40 },
+  { "op": "set_node_meta", "node_id": "…", "color": "sage", "icon": "✅", "tags": ["decided"] }
 ] }
 ```
 
@@ -180,10 +192,10 @@ interface FileNode {
   text: string;
   collapsed?: boolean;
   todoId?: string;      // set only if pushed to the external todo service
-  color?: string;       // reserved for a future release — do not set yet
-  icon?: string;        // reserved
-  note?: string;        // reserved
-  tags?: string[];      // reserved
+  color?: string;       // palette name: sage | mist | clay | sand | rose
+  icon?: string;        // leading emoji shown before the text (max 16 chars)
+  note?: string;        // longer hidden text (max 2000 chars)
+  tags?: string[];      // searchable labels (max 8 tags, 24 chars each)
   children: FileNode[];
 }
 

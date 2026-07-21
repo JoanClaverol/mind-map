@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { denormalize, normalize, serializeFloating, subtreeIds } from '../src/model/doc';
 import { branchToMarkdown, markdownToBranches } from '../src/model/markdown';
 import { applyDocOp, assignIds, type MapOp } from '../src/model/ops';
-import { SCHEMA_VERSION, type Doc, type FileNode, type MapFile } from '../src/model/types';
+import { NODE_COLORS, SCHEMA_VERSION, type Doc, type FileNode, type MapFile, type NodeColor } from '../src/model/types';
 import { publish } from './events';
 import { generateOutline, refineEnabled } from './openrouter';
 import * as storage from './storage';
@@ -136,10 +136,10 @@ interface FileNode {
   text: string;
   collapsed?: boolean;
   todoId?: string;
-  color?: string;   // reserved
-  icon?: string;    // reserved
-  note?: string;    // reserved
-  tags?: string[];  // reserved
+  color?: string;   // palette name: sage | mist | clay | sand | rose
+  icon?: string;    // leading emoji shown before the text (max 16 chars)
+  note?: string;    // longer hidden text (max 2000 chars)
+  tags?: string[];  // searchable labels (max 8 tags, 24 chars each)
   children: FileNode[];
 }
 \`\`\`
@@ -200,8 +200,8 @@ export function createMcpServer(): McpServer {
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
       const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
-      const markdown = branchToMarkdown(doc, map.root.id, { ids: true });
-      const floatingBlocks = doc.floating.map((f) => branchToMarkdown(doc, f.rootId, { ids: true }));
+      const markdown = branchToMarkdown(doc, map.root.id, { ids: true, meta: true });
+      const floatingBlocks = doc.floating.map((f) => branchToMarkdown(doc, f.rootId, { ids: true, meta: true }));
       const floatingSection = floatingBlocks.length ? `\n\n## Floating trees\n${floatingBlocks.join('\n\n')}` : '';
       const rels = relationshipsSection(doc);
       return {
@@ -229,7 +229,7 @@ export function createMcpServer(): McpServer {
       if (!map) return errorResult('map not found');
       const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
       if (!doc.nodes[args.node_id]) return errorResult(`node ${args.node_id} not found`);
-      const markdown = branchToMarkdown(doc, args.node_id, { ids: true, maxDepth: args.depth });
+      const markdown = branchToMarkdown(doc, args.node_id, { ids: true, meta: true, maxDepth: args.depth });
       const rels = relationshipsSection(doc, new Set(subtreeIds(doc, args.node_id)));
       return { content: [{ type: 'text', text: `${markdown}${rels ? `\n\n${rels}` : ''}` }] };
     },
@@ -239,14 +239,20 @@ export function createMcpServer(): McpServer {
     'find_nodes',
     {
       description:
-        'Finds nodes by text (case-insensitive substring) in one map or, when map_id is omitted, across all maps. Use this to locate node ids before editing instead of reading whole maps into context.',
-      inputSchema: z.object({
-        query: z.string().min(1).describe('Text to search for'),
-        map_id: z.string().optional().describe('Limit the search to one map'),
-      }),
+        'Finds nodes by text (case-insensitive substring) and/or tags in one map or, when map_id is omitted, across all maps. Provide query, tags, or both (tags must ALL be present on a node). Use this to locate node ids before editing instead of reading whole maps into context.',
+      inputSchema: z
+        .object({
+          query: z.string().min(1).optional().describe('Text to search for'),
+          tags: z.array(z.string().min(1)).min(1).optional().describe('Only nodes carrying ALL of these tags'),
+          map_id: z.string().optional().describe('Limit the search to one map'),
+        })
+        .refine((a) => a.query !== undefined || a.tags !== undefined, {
+          message: 'provide query, tags, or both',
+        }),
     },
     async (args) => {
-      const needle = args.query.toLowerCase();
+      const needle = args.query?.toLowerCase();
+      const wantTags = args.tags?.map((t) => t.toLowerCase());
       let targets: MapFile[];
       if (args.map_id !== undefined) {
         if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
@@ -263,10 +269,14 @@ export function createMcpServer(): McpServer {
       let truncated = false;
       outer: for (const map of targets) {
         const walk = (node: FileNode, path: string[]): boolean => {
-          if (node.text.toLowerCase().includes(needle)) {
+          const textMatch = needle === undefined || node.text.toLowerCase().includes(needle);
+          const tagsMatch =
+            wantTags === undefined || wantTags.every((t) => node.tags?.some((x) => x.toLowerCase() === t));
+          if (textMatch && tagsMatch) {
             if (hits.length >= MAX_HITS) return true;
             const where = path.length ? `, path: ${path.join(' > ')}` : '';
-            hits.push(`- ${node.id} "${truncateText(node.text, 60)}" — map ${map.id} ("${map.title}")${where}`);
+            const tagSuffix = node.tags?.length ? ` ${node.tags.map((t) => `#${t}`).join(' ')}` : '';
+            hits.push(`- ${node.id} "${truncateText(node.text, 60)}" — map ${map.id} ("${map.title}")${where}${tagSuffix}`);
           }
           for (const child of node.children) {
             if (walk(child, [...path, truncateText(node.text, 30)])) return true;
@@ -442,6 +452,40 @@ export function createMcpServer(): McpServer {
   );
 
   server.registerTool(
+    'set_node_meta',
+    {
+      description:
+        'Sets node metadata: color (one of sage/mist/clay/sand/rose — "none" clears), icon (a leading emoji; "" clears), note (longer hidden text shown in the inspector; "" clears), tags (searchable labels; [] clears, the array replaces the whole list). Absent fields are left untouched. Use color/icon to mark status (e.g. ❓ open question, sage = decided), notes for detail that would clutter the canvas. The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z
+        .object({
+          map_id: z.string().describe('The map id'),
+          node_id: z.string().describe('Id of the node'),
+          color: z.enum([...NODE_COLORS, 'none']).optional().describe('Palette color name; "none" clears'),
+          icon: z.string().optional().describe('Leading emoji/glyph; empty string clears'),
+          note: z.string().optional().describe('Longer hidden text; empty string clears'),
+          tags: z.array(z.string()).optional().describe('Replaces the tag list; [] clears'),
+        })
+        .refine((a) => a.color !== undefined || a.icon !== undefined || a.note !== undefined || a.tags !== undefined, {
+          message: 'provide at least one of color/icon/note/tags',
+        }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [
+        {
+          type: 'set_node_meta',
+          nodeId: args.node_id,
+          color: args.color === undefined ? undefined : args.color === 'none' ? null : (args.color as NodeColor),
+          icon: args.icon === undefined ? undefined : args.icon || null,
+          note: args.note === undefined ? undefined : args.note || null,
+          tags: args.tags === undefined ? undefined : args.tags.length ? args.tags : null,
+        },
+      ]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Updated metadata on ${args.node_id}` }] };
+    },
+  );
+
+  server.registerTool(
     'add_relationship',
     {
       description:
@@ -529,6 +573,14 @@ export function createMcpServer(): McpServer {
       y: z.number().optional(),
     }),
     z.object({ op: z.literal('detach_node'), node_id: z.string(), x: z.number().optional(), y: z.number().optional() }),
+    z.object({
+      op: z.literal('set_node_meta'),
+      node_id: z.string(),
+      color: z.enum([...NODE_COLORS, 'none']).optional(),
+      icon: z.string().optional(),
+      note: z.string().optional(),
+      tags: z.array(z.string()).optional(),
+    }),
   ]);
 
   server.registerTool(
@@ -625,6 +677,17 @@ export function createMcpServer(): McpServer {
             summaries.push(`[${i}] detach_node ${item.node_id} to (${pos.x}, ${pos.y})`);
             break;
           }
+          case 'set_node_meta':
+            ops.push({
+              type: 'set_node_meta',
+              nodeId: item.node_id,
+              color: item.color === undefined ? undefined : item.color === 'none' ? null : (item.color as NodeColor),
+              icon: item.icon === undefined ? undefined : item.icon || null,
+              note: item.note === undefined ? undefined : item.note || null,
+              tags: item.tags === undefined ? undefined : item.tags.length ? item.tags : null,
+            });
+            summaries.push(`[${i}] set_node_meta ${item.node_id}`);
+            break;
         }
       }
       const r = await mutateMap(args.map_id, ops);

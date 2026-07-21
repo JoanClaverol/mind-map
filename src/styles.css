@@ -93,6 +93,18 @@ body,
   stroke-width: 1;
 }
 
+/*
+ * Node color tints — 12% of a zen accent blended over --node-bg (fill) and
+ * 30% over --node-border (border). ORDERING CONTRACT: these must sit between
+ * .node-rect and .node-rect.root so the cascade lets the dark root fill and
+ * the selection fill/stroke (higher specificity / later in source) win.
+ */
+.node-rect.color-sage { fill: #eaefe8; stroke: #b7c2ae; } /* from #5d9272 (sent-badge green) */
+.node-rect.color-mist { fill: #eaedef; stroke: #b7bdc0; } /* from #5e81ac (selection slate) */
+.node-rect.color-clay { fill: #f6eee4; stroke: #d4bea5; } /* from #c08552 (arrow terracotta) */
+.node-rect.color-sand { fill: #f7f1df; stroke: #d7c698; } /* from #c9a227 (pin gold) */
+.node-rect.color-rose { fill: #f8ebe6; stroke: #dab7a9; } /* from #d3705f (recording red) */
+
 .node-rect.root {
   fill: var(--root-bg);
 }
@@ -122,6 +134,23 @@ body,
 
 .node-rect.root + foreignObject .node-text {
   color: #f5f2ea;
+}
+
+/* Applies inside the offscreen measurer too — same .node-text class. */
+.node-text .node-icon {
+  margin-right: 6px;
+}
+
+/* Marks a node carrying a note (inside bottom-right; sent-badge owns top-right). */
+.note-dot {
+  fill: var(--muted);
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.node-rect.root ~ .note-dot {
+  fill: #f5f2ea;
+  opacity: 0.5;
 }
 
 .node-text strong {
@@ -427,6 +456,105 @@ body,
   flex-direction: column;
   z-index: 9;
 }
+
+/* Node inspector (⇧I) — chat-panel visual family, top-right so both can be open. */
+.inspector-panel {
+  position: fixed;
+  top: 16px;
+  right: 24px;
+  width: min(280px, calc(100vw - 48px));
+  background: var(--node-bg);
+  border: 1px solid var(--node-border);
+  border-radius: 14px;
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.14);
+  padding: 12px 14px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text);
+}
+
+.inspector-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px 0;
+}
+
+.inspector-title {
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--node-border);
+  padding-bottom: 6px;
+}
+
+.inspector-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.inspector-fields input,
+.inspector-fields textarea {
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: #fffef9;
+  border: 1px solid var(--node-border);
+  border-radius: 8px;
+  padding: 6px 8px;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.inspector-fields input:focus,
+.inspector-fields textarea:focus {
+  outline: none;
+  border-color: var(--node-selected);
+}
+
+.inspector-swatches {
+  display: flex;
+  gap: 8px;
+}
+
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--node-border);
+  cursor: pointer;
+  padding: 0;
+}
+
+.swatch.active {
+  outline: 2px solid var(--node-selected);
+  outline-offset: 2px;
+}
+
+.swatch-none {
+  background:
+    linear-gradient(to top left, transparent 46%, var(--node-border) 48%, var(--node-border) 52%, transparent 54%),
+    var(--node-bg);
+}
+
+.swatch-sage { background: #eaefe8; border-color: #b7c2ae; }
+.swatch-mist { background: #eaedef; border-color: #b7bdc0; }
+.swatch-clay { background: #f6eee4; border-color: #d4bea5; }
+.swatch-sand { background: #f7f1df; border-color: #d7c698; }
+.swatch-rose { background: #f8ebe6; border-color: #dab7a9; }
 
 .chat-header {
   display: flex;

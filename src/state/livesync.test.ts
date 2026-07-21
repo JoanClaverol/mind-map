@@ -149,6 +149,23 @@ describe('livesync', () => {
     expect(after.doc!.relationships).toEqual([]);
   });
 
+  it('set_node_meta replays live and undo restores the prior metadata', () => {
+    emitOp({ type: 'set_node_meta', nodeId: 'aaaaaaaaaaaa', color: 'sage', icon: '💡', tags: ['idea'] });
+    let s = useStore.getState();
+    expect(s.doc!.nodes.aaaaaaaaaaaa).toMatchObject({ color: 'sage', icon: '💡', tags: ['idea'] });
+    expect(s.undoStack).toHaveLength(1);
+    expect(s.undoStack[0].label).toBe('mcp.set_node_meta');
+
+    emitOp({ type: 'set_node_meta', nodeId: 'aaaaaaaaaaaa', color: 'rose', icon: null });
+    s = useStore.getState();
+    expect(s.doc!.nodes.aaaaaaaaaaaa.color).toBe('rose');
+    expect(s.doc!.nodes.aaaaaaaaaaaa.icon).toBeUndefined();
+    expect(s.doc!.nodes.aaaaaaaaaaaa.tags).toEqual(['idea']); // untouched
+
+    s.undo();
+    expect(useStore.getState().doc!.nodes.aaaaaaaaaaaa).toMatchObject({ color: 'sage', icon: '💡' });
+  });
+
   it('close() detaches the stream', () => {
     cleanup();
     expect(FakeEventSource.instances[0].closed).toBe(true);

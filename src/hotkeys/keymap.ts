@@ -65,6 +65,8 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'shift+r', context: 'nav', command: 'audio.toggleRecord' },
   // floating trees (shift+n shadows type-to-edit for capital N, like H/J/K/L/R/S/T)
   { combo: 'shift+n', context: 'nav', command: 'tree.addFloating' },
+  // node inspector (shift+i shadows type-to-edit for capital I)
+  { combo: 'shift+i', context: 'nav', command: 'node.toggleInspector' },
   // view (shift+s shadows type-to-edit for capital S, like H/J/K/L/R)
   { combo: 'shift+s', context: 'nav', command: 'map.cycleLayout' },
   { combo: 'mod+=', context: 'nav', command: 'view.zoomIn' },

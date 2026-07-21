@@ -1,6 +1,6 @@
 import type { NodeDir, Rect } from '../layout/layout';
-import { renderInlineMarkdown } from '../model/inline-markdown';
-import type { DocNode } from '../model/types';
+import { renderNodeContent } from '../model/inline-markdown';
+import { NODE_COLORS, type DocNode, type NodeColor } from '../model/types';
 
 /** Links never navigate in place — plain click keeps node selection, Cmd/Ctrl+click opens a tab. */
 function handleLinkClick(e: React.MouseEvent) {
@@ -56,7 +56,7 @@ export function NodeView({ node, rect, dir, selected, isRoot, todoPending, dimme
         width={rect.w}
         height={rect.h}
         rx={8}
-        className={`node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${todoPending ? ' pending' : ''}${linkSource ? ' link-source' : ''}`}
+        className={`node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${todoPending ? ' pending' : ''}${linkSource ? ' link-source' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`}
       />
       <foreignObject width={rect.w} height={rect.h}>
         <div
@@ -64,9 +64,10 @@ export function NodeView({ node, rect, dir, selected, isRoot, todoPending, dimme
           style={{ width: rect.w }}
           onClick={handleLinkClick}
           onAuxClick={handleLinkClick}
-          dangerouslySetInnerHTML={{ __html: renderInlineMarkdown(node.text) }}
+          dangerouslySetInnerHTML={{ __html: renderNodeContent(node.text, node.icon) }}
         />
       </foreignObject>
+      {node.note && <circle className="note-dot" cx={rect.w - 8} cy={rect.h - 8} r={2.5} />}
       {node.collapsed && node.children.length > 0 && (
         <g
           className="collapse-badge"

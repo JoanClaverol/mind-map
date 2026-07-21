@@ -62,7 +62,7 @@ export function MindMapCanvas() {
   const layout = useMemo(() => {
     if (!doc) return null;
     const ids = visibleIds(doc);
-    const sizes = new Map(ids.map((id) => [id, measureText(doc.nodes[id].text)]));
+    const sizes = new Map(ids.map((id) => [id, measureText(doc.nodes[id].text, doc.nodes[id].icon)]));
     const result = layoutTree(doc, (id) => sizes.get(id)!);
     setLastLayout(result);
     return result;

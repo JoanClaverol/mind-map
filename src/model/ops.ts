@@ -1,5 +1,16 @@
 import { floatingEntry, newId, subtreeIds } from './doc';
-import type { Doc, DocNode, FileNode, Position } from './types';
+import {
+  MAX_ICON_LEN,
+  MAX_NOTE_LEN,
+  MAX_TAGS,
+  MAX_TAG_LEN,
+  NODE_COLORS,
+  type Doc,
+  type DocNode,
+  type FileNode,
+  type NodeColor,
+  type Position,
+} from './types';
 
 /**
  * Map operations: the shared vocabulary for surgical edits, used by both the
@@ -21,7 +32,16 @@ export type MapOp =
   | { type: 'delete_relationship'; relId: string }
   | { type: 'create_tree'; root: FileNode; pos: Position } // root carries FINAL ids
   | { type: 'move_tree'; rootId: string; pos: Position }
-  | { type: 'detach_node'; nodeId: string; pos: Position };
+  | { type: 'detach_node'; nodeId: string; pos: Position }
+  | {
+      // Partial-field metadata update: undefined = leave untouched, null = clear.
+      type: 'set_node_meta';
+      nodeId: string;
+      color?: NodeColor | null;
+      icon?: string | null;
+      note?: string | null;
+      tags?: string[] | null;
+    };
 
 /**
  * `select` is a suggested selection (used by commands.ts; ignored by live-sync).
@@ -65,7 +85,69 @@ export function applyDocOp(doc: Doc, op: MapOp): OpResult {
       return moveTree(doc, op.rootId, op.pos);
     case 'detach_node':
       return detachNode(doc, op.nodeId, op.pos);
+    case 'set_node_meta':
+      return setNodeMeta(doc, op);
   }
+}
+
+/**
+ * Update node metadata. Ops REJECT invalid input loudly (the LLM needs an
+ * actionable error and batch atomicity); migrate, by contrast, salvages
+ * whatever it can from hand-edited files.
+ */
+function setNodeMeta(doc: Doc, op: Extract<MapOp, { type: 'set_node_meta' }>): OpResult {
+  const node = doc.nodes[op.nodeId];
+  if (!node) return { ok: false, reason: `node ${op.nodeId} not found` };
+  if (op.color === undefined && op.icon === undefined && op.note === undefined && op.tags === undefined) {
+    return { ok: false, reason: 'set_node_meta requires at least one of color/icon/note/tags' };
+  }
+  // Validate everything before mutating anything.
+  if (op.color != null && !NODE_COLORS.includes(op.color)) {
+    return { ok: false, reason: `unknown color "${op.color}" — valid colors: ${NODE_COLORS.join(', ')}` };
+  }
+  const icon = op.icon == null ? op.icon : op.icon.trim();
+  if (icon != null && icon.length > MAX_ICON_LEN) {
+    return { ok: false, reason: `icon is longer than ${MAX_ICON_LEN} characters` };
+  }
+  const note = op.note == null ? op.note : op.note.trim();
+  if (note != null && note.length > MAX_NOTE_LEN) {
+    return { ok: false, reason: `note is longer than ${MAX_NOTE_LEN} characters` };
+  }
+  let tags: string[] | null | undefined = op.tags;
+  if (Array.isArray(op.tags)) {
+    const seen = new Set<string>();
+    tags = op.tags
+      .map((t) => t.trim())
+      .filter((t) => {
+        if (!t) return false;
+        const key = t.toLowerCase();
+        if (seen.has(key)) return false; // case-insensitive dedupe, first spelling wins
+        seen.add(key);
+        return true;
+      });
+    const long = tags.find((t) => t.length > MAX_TAG_LEN);
+    if (long) return { ok: false, reason: `tag "${long}" is longer than ${MAX_TAG_LEN} characters` };
+    if (tags.length > MAX_TAGS) return { ok: false, reason: `more than ${MAX_TAGS} tags` };
+  }
+  // Apply: null (or an emptied value) clears; undefined leaves the field alone.
+  // Immer skips same-value writes, so unchanged fields produce zero patches.
+  if (op.color !== undefined) {
+    if (op.color === null) delete node.color;
+    else node.color = op.color;
+  }
+  if (icon !== undefined) {
+    if (icon === null || icon === '') delete node.icon;
+    else node.icon = icon;
+  }
+  if (note !== undefined) {
+    if (note === null || note === '') delete node.note;
+    else node.note = note;
+  }
+  if (tags !== undefined) {
+    if (tags === null || tags.length === 0) delete node.tags;
+    else node.tags = tags;
+  }
+  return { ok: true, select: op.nodeId };
 }
 
 /** Reject any incoming id that collides with the doc or repeats within the branches. */

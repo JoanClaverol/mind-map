@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderInlineMarkdown } from './inline-markdown';
+import { renderInlineMarkdown, renderNodeContent } from './inline-markdown';
 
 describe('renderInlineMarkdown', () => {
   it('renders each inline mark', () => {
@@ -77,5 +77,17 @@ describe('renderInlineMarkdown', () => {
   it('keeps block syntax literal', () => {
     expect(renderInlineMarkdown('# heading')).toBe('# heading');
     expect(renderInlineMarkdown('- item')).toBe('- item');
+  });
+});
+
+describe('renderNodeContent', () => {
+  it('is identical to renderInlineMarkdown when there is no icon (measure-mirror pin)', () => {
+    const text = 'Some **bold** and `code`';
+    expect(renderNodeContent(text)).toBe(renderInlineMarkdown(text));
+  });
+
+  it('prepends an escaped icon span, never markdown-parsing it', () => {
+    expect(renderNodeContent('plan', '🚀')).toBe('<span class="node-icon">🚀</span>plan');
+    expect(renderNodeContent('x', '<b>*</b>')).toBe('<span class="node-icon">&lt;b&gt;*&lt;/b&gt;</span>x');
   });
 });

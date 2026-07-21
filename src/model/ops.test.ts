@@ -326,3 +326,56 @@ describe('floating tree ops', () => {
     expect(del).toEqual({ ok: false, reason: 'the main root cannot be deleted' });
   });
 });
+
+describe('applyDocOp set_node_meta', () => {
+  it('sets fields partially, leaving absent ones untouched', () => {
+    const doc = makeDoc();
+    const r = applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', color: 'sage', icon: '💡' });
+    expect(r).toEqual({ ok: true, select: 'b' });
+    expect(doc.nodes.b.color).toBe('sage');
+    expect(doc.nodes.b.icon).toBe('💡');
+    applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', note: 'a note', tags: ['One', 'two'] });
+    expect(doc.nodes.b.color).toBe('sage'); // untouched by the second op
+    expect(doc.nodes.b.note).toBe('a note');
+    expect(doc.nodes.b.tags).toEqual(['One', 'two']);
+  });
+
+  it('null clears a field; whitespace-only icon/note clear too', () => {
+    const doc = makeDoc();
+    applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', color: 'mist', icon: '⚡', note: 'x', tags: ['t'] });
+    applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', color: null, icon: '  ', note: null, tags: [] });
+    expect(doc.nodes.b.color).toBeUndefined();
+    expect(doc.nodes.b.icon).toBeUndefined();
+    expect(doc.nodes.b.note).toBeUndefined();
+    expect(doc.nodes.b.tags).toBeUndefined();
+  });
+
+  it('trims and case-insensitively dedupes tags, first spelling wins', () => {
+    const doc = makeDoc();
+    applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', tags: [' Ops ', 'ops', 'OPS', 'q3', ''] });
+    expect(doc.nodes.b.tags).toEqual(['Ops', 'q3']);
+  });
+
+  it('rejects invalid input loudly without mutating', () => {
+    const doc = makeDoc();
+    const before = JSON.stringify(doc);
+    const badColor = applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', color: 'crimson' as never });
+    expect(badColor.ok).toBe(false);
+    expect(!badColor.ok && badColor.reason).toContain('sage, mist, clay, sand, rose');
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', icon: 'x'.repeat(17) }).ok).toBe(false);
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', note: 'x'.repeat(2001) }).ok).toBe(false);
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', tags: ['x'.repeat(25)] }).ok).toBe(false);
+    expect(
+      applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', tags: Array.from({ length: 9 }, (_, i) => `t${i}`) }).ok,
+    ).toBe(false);
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b' }).ok).toBe(false); // no fields
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'nope', color: 'sage' }).ok).toBe(false);
+    expect(JSON.stringify(doc)).toBe(before);
+  });
+
+  it('allows the root', () => {
+    const doc = makeDoc();
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'root', color: 'clay' }).ok).toBe(true);
+    expect(doc.nodes.root.color).toBe('clay');
+  });
+});
