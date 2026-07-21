@@ -36,7 +36,7 @@ keystrokes. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
 ```bash
 git clone https://github.com/joanclaverol/mind-map.git && cd mind-map
 pnpm install && pnpm build
-pnpm link --global        # exposes the `mindmap` command
+pnpm add -g link:.        # exposes the `mindmap` command (symlinks to this clone)
 ```
 
 Check it worked:
@@ -251,7 +251,7 @@ that project's `mindmaps/` folder instead. Override the directory anytime with t
 
 | Symptom | Fix |
 | --- | --- |
-| `mindmap: command not found` after install | `pnpm link --global` needs pnpm's global bin on your PATH — run `pnpm setup`, restart the shell, then link again. Or skip the CLI and use the repo paths directly. |
+| `mindmap: command not found` after install | The global bin dir isn't on your PATH — run `pnpm setup`, restart the shell, then `pnpm add -g link:.` again. Or skip the CLI and use the repo paths directly. |
 | `mind-map isn't built — run "pnpm build"` | The CLI serves the compiled UI: run `pnpm build` in the repo once (and after every `git pull`). |
 | The client doesn't list the mindmap tools | MCP servers load at session start — restart the client/session after adding the config. In Claude Code, check with `/mcp`. |
 | AI edits don't appear in my browser | You're connected over **stdio**, which is a separate headless process. Switch the client to the **HTTP** config (`http://localhost:5454/mcp`) and make sure the app from step 1 is running. |
