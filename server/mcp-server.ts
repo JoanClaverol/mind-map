@@ -8,7 +8,6 @@ import { branchToMarkdown, markdownToBranches } from '../src/model/markdown';
 import { applyDocOp, assignIds, type MapOp } from '../src/model/ops';
 import { NODE_COLORS, SCHEMA_VERSION, type Doc, type FileNode, type MapFile, type NodeColor } from '../src/model/types';
 import { publish } from './events';
-import { generateOutline, refineEnabled } from './openrouter';
 import * as storage from './storage';
 
 function errorResult(message: string): { content: Array<{ type: 'text'; text: string }>; isError: true } {
@@ -37,7 +36,7 @@ function buildMapFile(title: string, branches: FileNode[]): MapFile {
  * Apply surgical ops to a map on disk — all-or-nothing: the first failing op
  * aborts the whole batch with nothing written and nothing published. On success
  * the batch is broadcast as ONE event, so an open browser tab replays it as a
- * single undoable step. Everything the ops don't touch (ids, todoIds, pinned,
+ * single undoable step. Everything the ops don't touch (ids, metadata, pinned,
  * folder, viewport, createdAt) rides along.
  */
 async function mutateMap(
@@ -135,7 +134,6 @@ interface FileNode {
   id: string;
   text: string;
   collapsed?: boolean;
-  todoId?: string;
   color?: string;   // palette name: sage | mist | clay | sand | rose
   icon?: string;    // leading emoji shown before the text (max 16 chars)
   note?: string;    // longer hidden text (max 2000 chars)
@@ -719,12 +717,6 @@ export function createMcpServer(): McpServer {
     },
   );
 
-  // Only offered when an OpenRouter key is configured — the connected LLM can
-  // always generate outlines itself and use create_map_from_outline instead.
-  if (refineEnabled()) {
-    registerGenerateMap(server);
-  }
-
   server.registerResource(
     'Mind Map MCP Guide',
     'docs://mcp',
@@ -737,50 +729,3 @@ export function createMcpServer(): McpServer {
   return server;
 }
 
-function registerGenerateMap(server: McpServer): void {
-  server.registerTool(
-    'generate_map',
-    {
-      description: 'Generates a new mind map from a prompt using an LLM (OpenRouter). Optionally uses an existing map as context.',
-      inputSchema: z.object({
-        prompt: z.string().describe('What the map should be about'),
-        title: z.string().optional().describe('Optional title; defaults to the first line of the prompt'),
-        source_map_id: z.string().optional().describe('Optional existing map id to use as context'),
-      }),
-    },
-    async (args) => {
-      const prompt = args.prompt.trim();
-      if (!prompt) return errorResult('prompt is required');
-
-      let contextMarkdown: string | undefined;
-      if (args.source_map_id) {
-        if (!storage.isValidId(args.source_map_id)) return errorResult('invalid source_map_id');
-        const source = await storage.readMap(args.source_map_id);
-        if (!source) return errorResult('source_map_id not found');
-        const doc = normalize(source.root, source.layout ?? 'right', source.relationships ?? []);
-        contextMarkdown = branchToMarkdown(doc, source.root.id);
-      }
-
-      let outline: string;
-      try {
-        outline = await generateOutline(prompt, contextMarkdown);
-      } catch (err) {
-        return errorResult(err instanceof Error ? err.message : 'AI generation failed');
-      }
-
-      const branches = markdownToBranches(outline);
-      const displayTitle = args.title?.trim() ?? prompt.split('\n')[0].slice(0, 80);
-      const map = buildMapFile(displayTitle, branches);
-      await storage.writeMap(map);
-      publish({ kind: 'map-created', mapId: map.id, title: map.title });
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Generated map "${map.title}" (id: ${map.id})\n\nOutline used:\n${outline}`,
-          },
-        ],
-      };
-    },
-  );
-}

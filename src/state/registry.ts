@@ -1,6 +1,4 @@
 import { api } from '../api/client';
-import { transcribeBlob } from '../audio/flow';
-import { startRecording, stopRecording } from '../audio/recorder';
 import { getGalleryDom } from '../gallery/galleryDom';
 import { refreshGallery } from '../gallery/galleryData';
 import { getLastOpened } from '../gallery/recents';
@@ -454,87 +452,6 @@ export const registry: Record<string, AppCommand> = {
   },
   'history.undo': { description: 'Undo', run: () => state().undo() },
   'history.redo': { description: 'Redo', run: () => state().redo() },
-  'audio.toggleRecord': {
-    description: 'Start/stop voice recording (transcript becomes nodes)',
-    run: () => {
-      const s = state();
-      if (!s.doc || s.editing) return;
-      if (s.audio?.phase === 'recording') {
-        stopRecording().then((rec) => {
-          if (!rec) {
-            state().setAudio(null);
-            state().addToast('info', 'Nothing recorded');
-            return;
-          }
-          void transcribeBlob(rec.blob, rec.filename);
-        });
-        return;
-      }
-      if (s.audio) return; // panel open or transcribing — no-op
-      startRecording().then(
-        () => state().setAudio({ phase: 'recording', startedAt: Date.now() }),
-        (err: Error) => state().addToast('error', `Microphone unavailable: ${err.message}`),
-      );
-    },
-  },
-  'todo.push': {
-    description: 'Push the selected node as a todo into segon-cervell',
-    run: () =>
-      withSelection((id) => {
-        const s = state();
-        const node = s.doc!.nodes[id];
-        if (node.todoId) {
-          s.addToast('info', 'Already pushed — todo exists in segon-cervell');
-          return;
-        }
-        if (s.pendingTodo.includes(id)) return;
-        const text = node.text.trim();
-        if (!text) {
-          s.addToast('info', 'Node is empty — nothing to push');
-          return;
-        }
-        s.setTodoPending(id, true);
-        api.pushTodo(text).then(
-          ({ todoId }) => {
-            const now = state();
-            now.setTodoPending(id, false);
-            if (now.doc?.nodes[id]) {
-              now.runCommand('setTodoId', (d) => cmd.setTodoId(d, id, todoId));
-            }
-            now.addToast('success', `Todo created: ${text}`);
-          },
-          (err: Error) => {
-            state().setTodoPending(id, false);
-            state().addToast('error', `Todo push failed: ${err.message}`);
-          },
-        );
-      }),
-  },
-  'note.push': {
-    description: 'Save the selected branch as a note in segon-cervell',
-    run: () =>
-      withSelection((id) => {
-        const s = state();
-        if (s.pendingNote.includes(id)) return;
-        const title = s.doc!.nodes[id].text.replace(/\s+/g, ' ').trim();
-        if (!title) {
-          s.addToast('info', 'Node is empty — nothing to save');
-          return;
-        }
-        s.setNotePending(id, true);
-        s.addToast('info', 'Saving branch to segon-cervell…');
-        api.saveNote(title, branchToMarkdown(s.doc!, id)).then(
-          () => {
-            state().setNotePending(id, false);
-            state().addToast('success', `Note saved: ${title}`);
-          },
-          (err: Error) => {
-            state().setNotePending(id, false);
-            state().addToast('error', `Note save failed: ${err.message}`);
-          },
-        );
-      }),
-  },
   'map.cycleLayout': {
     description: 'Cycle layout structure (right → balanced → org chart → roadmap)',
     run: () => {
@@ -578,13 +495,6 @@ export const registry: Record<string, AppCommand> = {
   'view.toggleHelp': {
     description: 'Show or hide the keyboard cheatsheet',
     run: () => state().toggleHelp(),
-  },
-  'chat.toggle': {
-    description: 'Ask questions about this map',
-    run: () => {
-      const s = state();
-      s.setChatOpen(!s.chatOpen);
-    },
   },
   'gallery.down': {
     description: 'Select the next map',

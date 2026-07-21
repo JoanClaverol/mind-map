@@ -9,7 +9,7 @@ const SAVE_LABELS = {
   error: 'save failed!',
 } as const;
 
-const HINTS = 'Tab child · Enter sibling · Space edit · hjkl move · ⇧A arrow · ⇧R record · ⇧S structure · / fold · t todo · ⌘Z undo · ⌘0 fit · Esc gallery · ? help';
+const HINTS = 'Tab child · Enter sibling · Space edit · hjkl move · ⇧A arrow · ⇧N tree · ⇧I inspect · ⇧S structure · / fold · ⌘Z undo · ⌘0 fit · Esc gallery · ? help';
 // Contextual hints that teach the arrow flow while it's in progress.
 const LINK_HINTS = 'Drawing arrow — hjkl / click to a target · Enter connect · Esc cancel';
 const REL_HINTS = 'Arrow selected — Enter label · Delete remove · Esc deselect';

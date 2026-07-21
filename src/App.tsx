@@ -1,13 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api } from './api/client';
-import { discardRecording } from './audio/recorder';
 import { MindMapCanvas } from './canvas/MindMapCanvas';
-import { ChatPanel } from './components/ChatPanel';
 import { HelpOverlay } from './components/HelpOverlay';
 import { InspectorPanel } from './components/InspectorPanel';
 import { StatusBar } from './components/StatusBar';
 import { Toasts } from './components/Toast';
-import { TranscriptPanel } from './components/TranscriptPanel';
 import { Gallery } from './gallery/Gallery';
 import { markOpened } from './gallery/recents';
 import { flushNow, initAutosave } from './state/autosave';
@@ -64,8 +61,6 @@ function Editor({ mapId }: { mapId: string }) {
       cleanup();
       window.removeEventListener('dragover', preventNav);
       window.removeEventListener('drop', preventNav);
-      discardRecording(); // release the mic if leaving mid-recording
-      useStore.getState().setAudio(null);
       useStore.getState().closeMap();
     };
   }, []);
@@ -82,9 +77,7 @@ function Editor({ mapId }: { mapId: string }) {
   return (
     <>
       <MindMapCanvas />
-      <ChatPanel />
       <InspectorPanel />
-      <TranscriptPanel />
       <StatusBar />
     </>
   );

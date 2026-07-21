@@ -35,8 +35,7 @@ pnpm install && pnpm build
 pnpm link --global        # exposes the `mindmap` command
 ```
 
-(Prefer containers? `docker compose -f docker-compose.share.yml up -d --build` runs the
-app without any integrations.)
+(Prefer containers? `docker compose up -d --build` runs the same app on port 5454.)
 
 ## Quick start
 
@@ -91,7 +90,7 @@ The MCP server (guide: [MCP.md](MCP.md)) exposes the full editing surface:
 | Floating trees | `create_tree`, `detach_node` — detached trees on the canvas; `move_node` on a tree root attaches it |
 | Connect ideas | `add_relationship`, `edit_relationship`, `delete_relationship` — labeled arrows between any two nodes, across trees |
 | Batch | `apply_ops` — up to 50 edits, atomic on disk, **one undo step** for you |
-| Create | `create_map_from_outline`, `generate_map` (only with an OpenRouter key) |
+| Create | `create_map_from_outline` |
 
 ## Features
 
@@ -109,8 +108,6 @@ The MCP server (guide: [MCP.md](MCP.md)) exposes the full editing surface:
 - **Markdown interop** — copy a branch as a nested list; paste any outline (Obsidian, Notes,
   XMind exports) as a subtree.
 - **Local-first storage** — one JSON file per map, no database, no cloud.
-- **Optional AI & voice** — voice notes transcribed locally, AI outline/refine, and an
-  "ask this map" chat (all off until you add a key). See [Optional integrations](#optional-integrations).
 
 New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -131,15 +128,11 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `⇧S` | Cycle layout structure: right tree → balanced map → org chart → roadmap (per map, undoable) |
 | `⇧N` | New **floating tree** at the view center (a detached tree on the same canvas — connect it later with arrows, or drag it onto a node to attach) |
 | `⇧I` | **Node inspector** — view/edit the selected node's color, icon, note, and tags (panel follows the selection; Esc closes) |
-| `⇧R` | Record a voice note → transcript becomes nodes under the selection (press again to stop, Esc to discard) |
 | `/` | Collapse / expand branch |
 | `⇧A` | Draw an **arrow** (relationship) from the selected node — move (`hjkl`/click) to a target, `Enter` to connect, `Esc` to cancel; the label editor opens on connect |
 | `⌘C` / `⌘X` / `⌘V` | Copy / cut branch as markdown outline · paste outline as subtree |
-| `t` | Push node as a todo to the external second-brain (optional) |
-| `⇧T` | Save branch as a note in the external second-brain (node text = title, subtree = markdown outline) |
 | `⌘Z` / `⌘⇧Z` | Undo / redo |
 | `⌘=` / `⌘-` / `⌘0` | Zoom in / out / fit |
-| `⌘K` | Ask-the-map chat — question answered from this map's content |
 | `Esc` | Back to gallery |
 | `?` | Keyboard cheatsheet — every bound command, generated from the live keymap (works in the gallery too) |
 
@@ -154,9 +147,8 @@ to attach the whole tree, or to empty canvas to reposition it. `Esc` cancels a d
 removes it, `Esc` deselects.
 
 > Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧I` opens the inspector, `⇧N` adds a floating
-> tree, `⇧R` records, `⇧S` switches structure, and `⇧T` saves a note, typing a *capital*
-> A/H/I/J/K/L/N/R/S/T won't trigger type-to-edit — press `Space` to edit instead, or unbind
-> them via `localStorage.keymap`.
+> tree, and `⇧S` switches structure, typing a *capital* A/H/I/J/K/L/N/S won't trigger
+> type-to-edit — press `Space` to edit instead, or unbind them via `localStorage.keymap`.
 
 ## Gallery
 
@@ -181,34 +173,6 @@ Each map is a pretty-printed JSON file in `maps/`, named `<id>.json` — one fil
 human-readable, easy to diff and back up. There's no database. The schema is documented in
 [ARCHITECTURE.md](ARCHITECTURE.md#data-model). Your own map files stay on your machine; only
 the demo `welcome.json` is committed to this repo.
-
-## Optional integrations
-
-Everything below is **off by default**. Copy `.env.example` to `.env` and set only the keys
-for what you want. With no keys, the app works fully as an offline mind mapper (and the
-full `docker-compose.yml` is the author's personal setup — it expects an external
-`whisper-cache` volume and a second-brain service; use `docker-compose.share.yml` instead).
-
-| Feature | What it does | Env keys |
-| --- | --- | --- |
-| **AI refine / outline / chat** | Structures voice transcripts into outlines, refines text, and powers `⌘K` "ask this map". Uses [OpenRouter](https://openrouter.ai). | `OPENROUTER_API_KEY`, `REFINE_MODEL` |
-| **Voice capture** | `⇧R` records from the mic and transcribes **locally** via a Whisper sidecar container (faster-whisper, auto-detects language). You can also drag an audio file onto the canvas. | `TRANSCRIBER_URL` |
-| **External second-brain** | `t` pushes a node as a todo and `⇧T` saves a branch as a note to an external todo/notes service over [MCP](https://modelcontextprotocol.io). Point it at any compatible server. | `SEGON_CERVELL_MCP_URL` |
-
-**Ask this map (`⌘K`):** a chat panel scoped to the current map. The tree is serialized to a
-markdown outline (plus relationships) and sent as grounding context, so answers stay anchored
-to what's on the canvas and stream in token by token. The conversation is ephemeral — nothing
-is written to the map file.
-
-## Share a maps-free copy
-
-To hand the app to someone without your maps or secrets:
-
-```bash
-./scripts/make-shareable.sh   # builds mind-map-share.zip (excludes maps/*.json and .env)
-```
-
-The recipient unzips it and runs `docker compose -f docker-compose.share.yml up -d --build`.
 
 ## Documentation
 

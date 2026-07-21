@@ -1,22 +1,16 @@
 import { Hono } from 'hono';
-import { stream, streamSSE } from 'hono/streaming';
+import { streamSSE } from 'hono/streaming';
 import { nanoid } from 'nanoid';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { SCHEMA_VERSION, normalizeFolderName, type ChatTurn, type MapFile } from '../src/model/types';
+import { SCHEMA_VERSION, normalizeFolderName, type MapFile } from '../src/model/types';
 import * as events from './events';
 import { createMcpServer } from './mcp-server';
-import { createTodo, saveNote } from './mcp';
-import { refineEnabled, refineText, streamMapAnswer, structureTranscript } from './openrouter';
-import { transcribeAudio, transcriberHealthy } from './transcriber';
 import * as storage from './storage';
-
-const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
 
 export const app = new Hono();
 
-// Lazily initialized on first request: createMcpServer decides its tool list
-// from env (e.g. generate_map needs OPENROUTER_API_KEY), and in dev the Vite
-// config populates process.env AFTER module top-levels have evaluated.
+// Lazily initialized on first request so createMcpServer reads env that the
+// dev server may only populate after module top-levels have evaluated.
 let mcpTransportPromise: Promise<WebStandardStreamableHTTPServerTransport> | null = null;
 function getMcpTransport(): Promise<WebStandardStreamableHTTPServerTransport> {
   mcpTransportPromise ??= (async () => {
@@ -31,10 +25,6 @@ app.all('/mcp', async (c) => {
   const mcpTransport = await getMcpTransport();
   const parsedBody = c.req.method === 'POST' ? await c.req.json().catch(() => undefined) : undefined;
   return mcpTransport.handleRequest(c.req.raw, { parsedBody });
-});
-
-app.get('/api/config', async (c) => {
-  return c.json({ refine: refineEnabled(), transcriber: await transcriberHealthy() });
 });
 
 // Live channel: pushes map changes made outside the browser (MCP tools) to open
@@ -53,103 +43,6 @@ app.get('/api/events', (c) =>
     await closed;
   }),
 );
-
-app.post('/api/transcribe', async (c) => {
-  if (Number(c.req.header('content-length') ?? 0) > MAX_AUDIO_BYTES) {
-    return c.json({ error: 'audio too large' }, 413);
-  }
-  const form = await c.req.formData().catch(() => null);
-  const file = form?.get('audio');
-  if (!(file instanceof File) || file.size === 0) {
-    return c.json({ error: 'audio file is required (multipart field "audio")' }, 400);
-  }
-  try {
-    return c.json(await transcribeAudio(file));
-  } catch (err) {
-    console.error('[transcribe] failed:', err instanceof Error ? err.message : err);
-    return c.json({ error: 'transcription failed — is the transcriber container running?' }, 502);
-  }
-});
-
-app.post('/api/structure', async (c) => {
-  if (!refineEnabled()) return c.json({ error: 'AI structuring disabled (no OPENROUTER_API_KEY)' }, 503);
-  const body = await c.req.json<{ text?: string }>().catch(() => null);
-  const text = typeof body?.text === 'string' ? body.text.trim() : '';
-  if (!text) return c.json({ error: 'text is required' }, 400);
-  try {
-    return c.json({ markdown: await structureTranscript(text) });
-  } catch (err) {
-    console.error('[structure] failed:', err instanceof Error ? err.message : err);
-    return c.json({ error: 'AI structuring failed' }, 502);
-  }
-});
-
-app.post('/api/refine', async (c) => {
-  if (!refineEnabled()) return c.json({ error: 'refine disabled (no OPENROUTER_API_KEY)' }, 503);
-  const body = await c.req.json<{ text?: string; instruction?: string }>().catch(() => null);
-  const text = typeof body?.text === 'string' ? body.text.trim() : '';
-  const instruction = typeof body?.instruction === 'string' ? body.instruction.trim() : '';
-  if (!text || !instruction) return c.json({ error: 'text and instruction are required' }, 400);
-  try {
-    return c.json({ text: await refineText(text, instruction) });
-  } catch (err) {
-    console.error('[refine] failed:', err instanceof Error ? err.message : err);
-    return c.json({ error: 'refine failed' }, 502);
-  }
-});
-
-app.post('/api/chat', async (c) => {
-  if (!refineEnabled()) return c.json({ error: 'AI chat disabled (no OPENROUTER_API_KEY)' }, 503);
-  const body = await c.req.json<{ markdown?: string; messages?: ChatTurn[] }>().catch(() => null);
-  const markdown = typeof body?.markdown === 'string' ? body.markdown.trim() : '';
-  const messages = Array.isArray(body?.messages)
-    ? body!.messages.filter(
-        (m): m is ChatTurn =>
-          !!m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && !!m.content.trim(),
-      )
-    : [];
-  if (!markdown) return c.json({ error: 'markdown is required' }, 400);
-  if (messages.length === 0) return c.json({ error: 'at least one message is required' }, 400);
-  c.header('Content-Type', 'text/plain; charset=utf-8');
-  // Streaming: once tokens start flowing the status is already 200, so a mid-stream
-  // failure just ends the stream early — the client treats a short answer as failed.
-  return stream(c, async (s) => {
-    try {
-      for await (const token of streamMapAnswer(markdown, messages)) await s.write(token);
-    } catch (err) {
-      console.error('[chat] failed:', err instanceof Error ? err.message : err);
-    }
-  });
-});
-
-app.post('/api/note', async (c) => {
-  const body = await c.req.json<{ title?: string; text?: string }>().catch(() => null);
-  const text = typeof body?.text === 'string' ? body.text.trim() : '';
-  if (!text) return c.json({ error: 'text is required' }, 400);
-  const title = typeof body?.title === 'string' && body.title.trim() ? body.title.trim() : 'Nota de veu';
-  try {
-    const { raw } = await saveNote(title, text);
-    return c.json({ ok: true, message: raw });
-  } catch (err) {
-    console.error('[note] failed:', err instanceof Error ? err.message : err);
-    return c.json({ error: 'segon-cervell unreachable' }, 502);
-  }
-});
-
-app.post('/api/todo', async (c) => {
-  const body = await c.req.json<{ text?: string; planned_for?: string }>().catch(() => null);
-  const text = typeof body?.text === 'string' ? body.text.trim() : '';
-  if (!text) return c.json({ error: 'text is required' }, 400);
-  const plannedFor = /^\d{4}-\d{2}-\d{2}$/.test(body?.planned_for ?? '') ? body!.planned_for : undefined;
-  try {
-    const { todoId, raw } = await createTodo(text, plannedFor);
-    console.log(`[todo] pushed "${text}" (${plannedFor ?? 'backlog'}) → ${raw}`);
-    return c.json({ todoId });
-  } catch (err) {
-    console.error('[todo] push failed:', err instanceof Error ? err.message : err);
-    return c.json({ error: 'segon-cervell unreachable' }, 502);
-  }
-});
 
 app.get('/api/maps', async (c) => {
   const { maps, warnings } = await storage.listMaps();

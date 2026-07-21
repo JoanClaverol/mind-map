@@ -58,11 +58,6 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'mod+c', context: 'nav', command: 'clipboard.copyBranch' },
   { combo: 'mod+x', context: 'nav', command: 'clipboard.cutBranch' },
   { combo: 'mod+v', context: 'nav', command: 'clipboard.paste' },
-  // segon-cervell (shift+t shadows type-to-edit for capital T, like H/J/K/L/R/S)
-  { combo: 't', context: 'nav', command: 'todo.push' },
-  { combo: 'shift+t', context: 'nav', command: 'note.push' },
-  // voice capture (shadows type-to-edit for capital R — Space edits instead)
-  { combo: 'shift+r', context: 'nav', command: 'audio.toggleRecord' },
   // floating trees (shift+n shadows type-to-edit for capital N, like H/J/K/L/R/S/T)
   { combo: 'shift+n', context: 'nav', command: 'tree.addFloating' },
   // node inspector (shift+i shadows type-to-edit for capital I)
@@ -74,8 +69,6 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'mod+-', context: 'nav', command: 'view.zoomOut' },
   { combo: 'mod+0', context: 'nav', command: 'view.fit' },
   { combo: 'escape', context: 'nav', command: 'view.backToGallery' },
-  // ask-the-map chat
-  { combo: 'mod+k', context: 'nav', command: 'chat.toggle' },
   // help (shift+? assumes a layout where ? is shifted; override via localStorage.keymap otherwise)
   { combo: 'shift+?', context: 'nav', command: 'view.toggleHelp' },
   { combo: 'shift+?', context: 'gallery', command: 'view.toggleHelp' },

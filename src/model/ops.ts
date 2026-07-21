@@ -178,7 +178,6 @@ function insertBranch(doc: Doc, branch: FileNode, intoId: string | null): void {
     collapsed: branch.collapsed ?? false,
     children: [],
   };
-  if (branch.todoId) node.todoId = branch.todoId;
   if (branch.color) node.color = branch.color;
   if (branch.icon) node.icon = branch.icon;
   if (branch.note) node.note = branch.note;

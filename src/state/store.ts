@@ -32,20 +32,6 @@ export interface Toast {
 
 export type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
-/**
- * Voice-capture UI state. Never enters history/autosave: it is set with plain
- * `set` and deliberately does not touch rev or saveState. The MediaRecorder
- * itself lives in src/audio/recorder.ts, not here.
- */
-export interface AudioState {
-  phase: 'recording' | 'transcribing' | 'ready' | 'busy';
-  startedAt?: number;
-  transcript?: string;
-  language?: string;
-  duration?: number;
-  segments?: { text: string; start: number; end: number }[];
-}
-
 let toastSeq = 0;
 
 interface StoreState {
@@ -73,13 +59,8 @@ interface StoreState {
   undoStack: HistoryEntry[];
   redoStack: HistoryEntry[];
   toasts: Toast[];
-  /** Nodes with an in-flight todo push. */
-  pendingTodo: string[];
-  /** Nodes with an in-flight note save. */
-  pendingNote: string[];
-  audio: AudioState | null;
   /**
-   * Gallery UI state. Like audio, plain `set` only — never touches rev or
+   * Gallery UI state. Plain `set` only — never touches rev or
    * saveState. Lives here so gallery.* registry commands can drive it.
    */
   galleryMaps: MapMeta[] | null;
@@ -95,13 +76,6 @@ interface StoreState {
   helpOpen: boolean;
   /** Node inspector panel (⇧I) — plain set, never touches rev/saveState. */
   inspectorOpen: boolean;
-  /**
-   * "Chat with this map" panel. Like audio/help, plain `set` only — never enters
-   * history or autosave. Ephemeral: reset whenever a map is loaded or closed.
-   */
-  chatOpen: boolean;
-  chatMessages: ChatMessage[];
-  chatStreaming: boolean;
 
   loadMap(map: MapFile): void;
   closeMap(): void;
@@ -136,9 +110,6 @@ interface StoreState {
   abortEdit(): void;
   addToast(kind: Toast['kind'], message: string): void;
   dismissToast(id: number): void;
-  setTodoPending(nodeId: string, pending: boolean): void;
-  setNotePending(nodeId: string, pending: boolean): void;
-  setAudio(audio: AudioState | null): void;
   setGalleryMaps(maps: MapMeta[] | null): void;
   setGalleryFolders(folders: FolderInfo[] | null): void;
   setGallerySearch(search: string): void;
@@ -153,18 +124,6 @@ interface StoreState {
   toggleHelp(): void;
   setInspectorOpen(open: boolean): void;
   toggleInspector(): void;
-  setChatOpen(open: boolean): void;
-  addChatMessage(msg: ChatMessage): void;
-  /** Append streamed text to the most recent message (the in-flight assistant turn). */
-  appendToLastChatMessage(text: string): void;
-  setChatStreaming(streaming: boolean): void;
-  resetChat(): void;
-}
-
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
 }
 
 function clampSelection(doc: Doc, id: string | null): string {
@@ -190,9 +149,6 @@ export const useStore = create<StoreState>((set, get) => ({
   undoStack: [],
   redoStack: [],
   toasts: [],
-  pendingTodo: [],
-  pendingNote: [],
-  audio: null,
   galleryMaps: null,
   galleryFolders: null,
   gallerySearch: '',
@@ -202,9 +158,6 @@ export const useStore = create<StoreState>((set, get) => ({
   galleryFolderPicker: null,
   helpOpen: false,
   inspectorOpen: false,
-  chatOpen: false,
-  chatMessages: [],
-  chatStreaming: false,
 
   loadMap(map) {
     const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
@@ -226,12 +179,7 @@ export const useStore = create<StoreState>((set, get) => ({
       saveState: 'saved',
       undoStack: [],
       redoStack: [],
-      pendingTodo: [],
-      pendingNote: [],
       inspectorOpen: false,
-      chatOpen: false,
-      chatMessages: [],
-      chatStreaming: false,
     });
   },
 
@@ -252,12 +200,7 @@ export const useStore = create<StoreState>((set, get) => ({
       saveState: 'idle',
       undoStack: [],
       redoStack: [],
-      pendingTodo: [],
-      pendingNote: [],
       inspectorOpen: false,
-      chatOpen: false,
-      chatMessages: [],
-      chatStreaming: false,
     });
   },
 
@@ -418,25 +361,8 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
   },
 
-  setTodoPending(nodeId, pending) {
-    set((s) => ({
-      pendingTodo: pending
-        ? [...s.pendingTodo, nodeId]
-        : s.pendingTodo.filter((id) => id !== nodeId),
-    }));
-  },
 
-  setNotePending(nodeId, pending) {
-    set((s) => ({
-      pendingNote: pending
-        ? [...s.pendingNote, nodeId]
-        : s.pendingNote.filter((id) => id !== nodeId),
-    }));
-  },
 
-  setAudio(audio) {
-    set({ audio });
-  },
 
   setGalleryMaps(maps) {
     set({ galleryMaps: maps });
@@ -500,29 +426,8 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({ inspectorOpen: !s.inspectorOpen }));
   },
 
-  setChatOpen(open) {
-    set({ chatOpen: open });
-  },
 
-  addChatMessage(msg) {
-    set((s) => ({ chatMessages: [...s.chatMessages, msg] }));
-  },
 
-  appendToLastChatMessage(text) {
-    set((s) => {
-      if (s.chatMessages.length === 0) return {};
-      const messages = s.chatMessages.slice();
-      const last = messages[messages.length - 1];
-      messages[messages.length - 1] = { ...last, content: last.content + text };
-      return { chatMessages: messages };
-    });
-  },
 
-  setChatStreaming(streaming) {
-    set({ chatStreaming: streaming });
-  },
 
-  resetChat() {
-    set({ chatOpen: false, chatMessages: [], chatStreaming: false });
-  },
 }));

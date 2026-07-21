@@ -20,7 +20,6 @@ interface NodeViewProps {
   dir: NodeDir;
   selected: boolean;
   isRoot: boolean;
-  todoPending: boolean;
   /** Part of the subtree being dragged. */
   dimmed: boolean;
   /** The source node while an arrow is being drawn from it. */
@@ -30,7 +29,7 @@ interface NodeViewProps {
   onToggleCollapse(): void;
 }
 
-export function NodeView({ node, rect, dir, selected, isRoot, todoPending, dimmed, linkSource, onPressStart, onEdit, onToggleCollapse }: NodeViewProps) {
+export function NodeView({ node, rect, dir, selected, isRoot, dimmed, linkSource, onPressStart, onEdit, onToggleCollapse }: NodeViewProps) {
   const badgeText = `+${node.children.length}`;
   const badgeWidth = 14 + 7 * badgeText.length;
   const badgePos =
@@ -56,7 +55,7 @@ export function NodeView({ node, rect, dir, selected, isRoot, todoPending, dimme
         width={rect.w}
         height={rect.h}
         rx={8}
-        className={`node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${todoPending ? ' pending' : ''}${linkSource ? ' link-source' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`}
+        className={`node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${linkSource ? ' link-source' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`}
       />
       <foreignObject width={rect.w} height={rect.h}>
         <div
@@ -80,14 +79,6 @@ export function NodeView({ node, rect, dir, selected, isRoot, todoPending, dimme
           <rect width={badgeWidth} height={18} rx={9} />
           <text x={badgeWidth / 2} y={13} textAnchor="middle">
             {badgeText}
-          </text>
-        </g>
-      )}
-      {node.todoId && (
-        <g className="sent-badge" transform={`translate(${rect.w - 8},-6)`}>
-          <circle r={8} />
-          <text y={3.5} textAnchor="middle">
-            ✓
           </text>
         </g>
       )}

@@ -5,10 +5,9 @@ For build/run conventions and how to add a feature, see [CONTRIBUTING.md](CONTRI
 
 ## The big picture
 
-mind-map is a single-page React app backed by a small [Hono](https://hono.dev) HTTP
-server. Maps are plain JSON files on disk — there is no database. Everything else
-(voice transcription, AI features, the external second-brain integration) is optional and
-reached over HTTP.
+mindmap-mcp is a single-page React app backed by a small [Hono](https://hono.dev) HTTP
+server. Maps are plain JSON files on disk — there is no database, no external service,
+and no API key. The same server feeds the browser canvas and any MCP-connected LLM.
 
 ```mermaid
 flowchart TD
@@ -25,17 +24,8 @@ flowchart TD
 
     Maps[("maps/*.json<br/>one file per map")]
 
-    subgraph Optional["Optional services (off by default)"]
-        OR["OpenRouter<br/>(refine · chat · generate)"]
-        Whisper["Whisper sidecar<br/>(local transcription)"]
-        Brain["External second-brain<br/>todo/notes via MCP"]
-    end
-
     Store <-->|fetch JSON| API
     API <-->|atomic read/write| Maps
-    API -->|REFINE / chat / generate| OR
-    API -->|audio| Whisper
-    API -->|push todo / save note| Brain
     MCPin -->|read/create maps| Maps
 
     AIclient["AI client<br/>(Claude, CLI tools)"] -.->|MCP| MCPin
@@ -92,9 +82,6 @@ A handful of focused modules under [`server/`](server):
 | `vite-plugin.ts` | Mounts `app` as Vite middleware in dev. |
 | `standalone.ts` | Production entry: serves built assets + `serve()`. Used by Docker. |
 | `storage.ts` | Maps CRUD with atomic writes (write temp file, rename). |
-| `openrouter.ts` | Calls to OpenRouter for refine, ask-this-map chat (streaming), and map generation. |
-| `transcriber.ts` | Proxies audio to the Whisper sidecar. |
-| `mcp.ts` | **Outbound** MCP client to the external second-brain (push todo / save note). |
 | `mcp-server.ts` | **Inbound** MCP server exposing mind-map tools to AI clients, including surgical node edits (see [MCP.md](MCP.md)). |
 | `mcp-stdio.ts` | stdio entry point for the inbound MCP server. |
 | `events.ts` | In-process pub/sub for external map edits (`map-ops` batches), fanned out to browser tabs over SSE (`GET /api/events`). |
@@ -126,7 +113,6 @@ interface FileNode {
   id: string;
   text: string;          // node label; supports inline markdown
   collapsed?: boolean;
-  todoId?: string;       // set once pushed to the external todo service
   color?: string;        // palette name (NODE_COLORS) — subtle tint on the canvas
   icon?: string;         // leading emoji, rendered before the text (never part of text)
   note?: string;         // hidden longer text — dot on canvas, shown in the ⇧I inspector
@@ -155,21 +141,18 @@ interface Relationship {
 ```
 src/
   api/        client-side wrappers around the /api/* routes
-  audio/      mic recording + the record → transcribe → insert flow
   canvas/     rendering: nodes, edges, relationship arrows, the node editor,
               drag-and-drop, viewport/pan-zoom, layout cache
-  components/  panels and overlays: chat, transcript, help, status bar, toasts
+  components/  panels and overlays: node inspector, help, status bar, toasts
   gallery/    the Esc map menu: sections, fuzzy search, recents
   hotkeys/    keymap data + dispatcher that resolves key combos to command ids
   layout/     pure layout function + text measurement
-  model/      types, doc helpers, markdown (block + inline), segments, migrations
+  model/      types, doc helpers, markdown (block + inline), migrations
   state/      Zustand store, Immer command functions, command registry, autosave
 server/       Hono app and the modules described above
 bin/          the `mindmap` CLI — per-project sessions (`up`, `claude`), a stdio MCP entry
               for spawning clients (`stdio`), and per-client config snippets (`config`)
-transcriber/  Whisper sidecar (Python; faster-whisper) used for local transcription
 maps/         your map JSON files (git-ignored except the demo welcome map)
-scripts/      make-shareable.sh — package a maps/secrets-free zip to hand to someone
 ```
 
 ## How a keystroke becomes a change

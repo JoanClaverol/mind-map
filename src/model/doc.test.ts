@@ -10,7 +10,7 @@ const tree: FileNode = {
       id: 'a',
       text: 'Alpha',
       collapsed: true,
-      todoId: 'todo-123',
+      note: 'a note',
       children: [
         { id: 'a1', text: 'Alpha one', children: [] },
         { id: 'a2', text: 'Alpha two', children: [] },
@@ -21,7 +21,7 @@ const tree: FileNode = {
 };
 
 describe('normalize/denormalize', () => {
-  it('round-trips a tree exactly, including collapsed and todoId', () => {
+  it('round-trips a tree exactly, including collapsed and metadata', () => {
     expect(denormalize(normalize(tree))).toEqual(tree);
   });
 

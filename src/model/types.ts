@@ -37,8 +37,6 @@ export interface FileNode {
   id: string;
   text: string;
   collapsed?: boolean;
-  /** segon-cervell todo id once this node has been pushed. */
-  todoId?: string;
   /** Node color name (see NODE_COLORS) — typed loosely because disk is untrusted; migrate narrows. */
   color?: string;
   /** Leading emoji/glyph rendered before the text (never part of `text`). */
@@ -132,18 +130,11 @@ export function normalizeFolderName(raw: unknown): string | undefined {
   return trimmed;
 }
 
-/** One turn in a "chat with this map" conversation. Never persisted — see ChatPanel. */
-export interface ChatTurn {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 /** A node in the in-memory normalized document. */
 export interface DocNode {
   id: string;
   text: string;
   collapsed: boolean;
-  todoId?: string;
   // Node metadata — see FileNode.
   color?: string;
   icon?: string;

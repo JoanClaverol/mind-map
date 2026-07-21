@@ -13,7 +13,7 @@ function makeDoc(): Doc {
           id: 'a',
           text: 'a',
           collapsed: true,
-          children: [{ id: 'a1', text: 'a1', todoId: 'todo-9', children: [] }],
+          children: [{ id: 'a1', text: 'a1', note: 'nine', children: [] }],
         },
         { id: 'b', text: 'b', children: [] },
         { id: 'c', text: 'c', children: [] },
@@ -215,7 +215,7 @@ describe('applyDocOp delete_relationship', () => {
 });
 
 describe('normalize → applyDocOp → denormalize round-trip', () => {
-  it('leaves untouched subtrees byte-identical (ids, todoId, collapsed preserved)', () => {
+  it('leaves untouched subtrees byte-identical (ids, metadata, collapsed preserved)', () => {
     const doc = makeDoc();
     applyDocOp(doc, { type: 'add_nodes', parentId: 'b', branches: [branch('x', 'X')] });
     const root = denormalize(doc);
@@ -224,7 +224,7 @@ describe('normalize → applyDocOp → denormalize round-trip', () => {
       id: 'a',
       text: 'a',
       collapsed: true,
-      children: [{ id: 'a1', text: 'a1', todoId: 'todo-9', children: [] }],
+      children: [{ id: 'a1', text: 'a1', note: 'nine', children: [] }],
     });
   });
 });

@@ -10,8 +10,7 @@ confidence that undo/redo and layout still hold.
 | --- | --- | --- |
 | [Node.js](https://nodejs.org) | 20+ | Tested on 22/26. |
 | [pnpm](https://pnpm.io) | 9+ | The repo uses a pnpm workspace + lockfile. |
-| [Docker](https://www.docker.com) | optional | Only needed for the container workflow and local voice transcription. |
-| Python 3.12 | optional | Only the Whisper transcriber sidecar; you don't need it for app development. |
+| [Docker](https://www.docker.com) | optional | Only needed for the container workflow. |
 
 ## Local setup
 
@@ -21,9 +20,8 @@ pnpm dev          # app + API on http://localhost:5454 with hot reload
 ```
 
 That's the whole loop for working on the UI, the layout engine, commands, or the API — no
-Docker required. Optional features (voice, AI refine, ask-this-map, the external
-second-brain) stay disabled until you add the matching keys to `.env`; see
-[`.env.example`](.env.example) and the [README](README.md#optional-integrations).
+Docker required. There are no external services and no API keys: the app is fully
+self-contained (browser canvas + MCP server over one local port).
 
 ## Verify your change
 

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createMcpServer } from './mcp-server.js';
 
-// Load local secrets the same way `pnpm dev` does for the API server.
+// Load local overrides (e.g. MAPS_DIR, PORT) from .env if present.
 if (existsSync(path.resolve(process.cwd(), '.env'))) {
   try {
     process.loadEnvFile();

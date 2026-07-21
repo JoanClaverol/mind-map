@@ -138,12 +138,6 @@ export function setNodeMeta(
   return r.ok ? { select: r.select } : {};
 }
 
-export function setTodoId(draft: Draft<Doc>, nodeId: string, todoId: string): CommandResult {
-  const node = draft.nodes[nodeId];
-  if (!node) return {};
-  node.todoId = todoId;
-  return { select: nodeId };
-}
 
 /**
  * Add a free arrow from→to. The id is supplied so the caller can immediately

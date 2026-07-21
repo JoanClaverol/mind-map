@@ -15,7 +15,6 @@ mindmap-mcp is a local, keyboard-first mind mapping canvas. Maps are stored as p
 - **Connect ideas with relationship arrows**: free directional cross-links between any two nodes — including across trees.
 - **Batch several edits atomically** with `apply_ops`.
 - Create a new map from a markdown outline.
-- Generate a new map from a prompt using an LLM (only present when OpenRouter is configured).
 
 Edits appear **live** in a browser tab that has the map open, and the user can undo them there with Ctrl+Z — treat your edits as collaborator edits on a shared document, not batch rewrites.
 
@@ -162,15 +161,6 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 - Parses the markdown into a tree and saves a new map.
 - Returns the new map id.
 
-### `generate_map`
-
-- Arguments: `{ prompt: string, title?: string, source_map_id?: string }`
-- Sends the prompt to OpenRouter and asks for a nested markdown outline.
-- If `source_map_id` is provided, the existing map is included as context (it is not copied unless the prompt asks for it).
-- Saves the result as a new map and returns its id plus the outline that was used.
-
-This tool is **only registered when `OPENROUTER_API_KEY` is configured** — if you don't see it, generate the outline yourself and use `create_map_from_outline`.
-
 ## Map file format (`MapFile`)
 
 ```ts
@@ -213,7 +203,7 @@ interface Relationship {
 
 ## How to generate a good map
 
-When you generate a map, either through `generate_map` or by producing markdown for `create_map_from_outline`, follow these rules:
+When you produce markdown for `create_map_from_outline`, `add_nodes`, or `create_tree`, follow these rules:
 
 1. **Output only markdown bullet outlines.** Use `- ` for every line.
 2. **Indent with two spaces per level.** Do not use tabs or mixed indentation.
@@ -249,7 +239,7 @@ This will create a root node "Trip to Japan" with four children, each with their
 ### Create a brand new map from a conversation
 
 1. Call `get_project_context` if you need the schema.
-2. Call `generate_map` with a clear prompt.
+2. Compose a markdown outline yourself and call `create_map_from_outline`.
 3. Read the returned map id and tell the user.
 
 ### Co-edit a map with the user (preferred for existing maps)
@@ -280,12 +270,6 @@ This will create a root node "Trip to Japan" with four children, each with their
 
 Use `apply_ops` when a change involves several edits that belong together (split a node, regroup a branch, rename several siblings). It is atomic on disk and lands as a single Ctrl+Z for the user — much better than a stream of individual edits they'd have to undo one by one.
 
-### Build on an existing map with AI generation
-
-1. Call `read_map_markdown` with the existing map id to get its outline.
-2. Call `generate_map` with the prompt and `source_map_id` set to the existing map id.
-3. The model will receive the existing outline as context and can extend or reorganize it. Note this creates a **new** map; to change the existing one, use the surgical edit tools instead.
-
 ### Create a map manually from an outline
 
 1. Format the outline as markdown bullets.
@@ -305,5 +289,4 @@ Tools return `{ isError: true, content: [...] }` for problems such as:
 
 - Invalid map id format.
 - Map not found.
-- Missing OpenRouter API key for `generate_map`.
 - Empty title or prompt.

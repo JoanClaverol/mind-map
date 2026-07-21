@@ -39,7 +39,7 @@ describe('mcp-server tools', () => {
     const text = textContent(result);
     expect(text).toContain('# Mind Map MCP Guide');
     expect(text).toContain('MapFile schema version');
-    expect(text).toContain('generate_map');
+    expect(text).toContain('apply_ops');
   });
 
   it('exposes the MCP guide as a resource', async () => {
@@ -142,7 +142,7 @@ describe('mcp-server tools', () => {
     expect(events[0]).toMatchObject({ kind: 'map-ops', mapId, ops: [{ type: 'add_nodes', parentId: alphaId }] });
   });
 
-  it('edit_node changes only the target and preserves sibling ids and todoId', async () => {
+  it('edit_node changes only the target and preserves sibling ids and metadata', async () => {
     const client = await createClient();
     const createText = textContent(
       await client.callTool({
@@ -151,10 +151,10 @@ describe('mcp-server tools', () => {
       }),
     );
     const mapId = createText.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
-    // Simulate a pushed todo on "Two" by editing the file directly.
+    // Pre-set metadata on "Two" by editing the file directly.
     const file = path.join(mapsDir, `${mapId}.json`);
     const raw = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
-    raw.root.children[1].todoId = 'todo-42';
+    raw.root.children[1].note = 'keep me';
     writeFileSync(file, JSON.stringify(raw, null, 2));
     const oneId = raw.root.children[0].id;
 
@@ -166,7 +166,7 @@ describe('mcp-server tools', () => {
 
     const after = JSON.parse(readFileSync(file, 'utf8')) as MapFile;
     expect(after.root.children[0]).toMatchObject({ id: oneId, text: 'One **renamed**' });
-    expect(after.root.children[1]).toMatchObject({ id: raw.root.children[1].id, todoId: 'todo-42' });
+    expect(after.root.children[1]).toMatchObject({ id: raw.root.children[1].id, note: 'keep me' });
   });
 
   it('move_node rejects cycles and delete_node prunes relationships', async () => {
@@ -213,21 +213,11 @@ describe('mcp-server tools', () => {
     expect(textContent(root)).toContain('root');
   });
 
-  it('generate_map only registers when OpenRouter is configured', async () => {
-    const previous = process.env.OPENROUTER_API_KEY;
-
-    delete process.env.OPENROUTER_API_KEY;
-    const without = await createClient();
-    const namesWithout = (await without.listTools()).tools.map((t) => t.name);
-    expect(namesWithout).not.toContain('generate_map');
-
-    process.env.OPENROUTER_API_KEY = 'sk-test-dummy';
-    const withKey = await createClient();
-    const namesWith = (await withKey.listTools()).tools.map((t) => t.name);
-    expect(namesWith).toContain('generate_map');
-
-    if (previous !== undefined) process.env.OPENROUTER_API_KEY = previous;
-    else delete process.env.OPENROUTER_API_KEY;
+  it('generate_map is gone — the connected LLM generates outlines itself', async () => {
+    const client = await createClient();
+    const names = (await client.listTools()).tools.map((t) => t.name);
+    expect(names).not.toContain('generate_map');
+    expect(names).toContain('create_map_from_outline');
   });
 
   it('relationship tools round-trip: add returns an id, edit relabels, delete removes', async () => {

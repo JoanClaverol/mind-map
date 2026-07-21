@@ -20,7 +20,6 @@ export function normalize(
       collapsed: n.collapsed ?? false,
       children: n.children.map((c) => c.id),
     };
-    if (n.todoId) node.todoId = n.todoId;
     if (n.color) node.color = n.color;
     if (n.icon) node.icon = n.icon;
     if (n.note) node.note = n.note;
@@ -49,7 +48,6 @@ export function denormalize(doc: Doc, id: string = doc.rootId): FileNode {
     children: n.children.map((c) => denormalize(doc, c)),
   };
   if (n.collapsed) out.collapsed = true;
-  if (n.todoId) out.todoId = n.todoId;
   if (n.color) out.color = n.color;
   if (n.icon) out.icon = n.icon;
   if (n.note) out.note = n.note;

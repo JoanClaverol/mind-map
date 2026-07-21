@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { isAudioFile, transcribeBlob } from '../audio/flow';
-import { discardRecording } from '../audio/recorder';
 import { buildIndex, comboFromEvent, isPrintable, resolveCommand } from '../hotkeys/dispatcher';
 import { DEFAULT_KEYMAP, loadKeymapOverrides, resolveKeymap } from '../hotkeys/keymap';
 import { layoutTree } from '../layout/layout';
@@ -49,7 +47,6 @@ export function MindMapCanvas() {
   const selectedRelId = useStore((s) => s.selectedRelId);
   const editingRel = useStore((s) => s.editingRel);
   const viewport = useStore((s) => s.viewport);
-  const pendingTodo = useStore((s) => s.pendingTodo);
   const hostRef = useRef<HTMLDivElement>(null);
 
   const dragRef = useRef<DragRef | null>(null);
@@ -231,22 +228,6 @@ export function MindMapCanvas() {
       }
       return;
     }
-    const audio = useStore.getState().audio;
-    if (audio) {
-      if (audio.phase === 'recording') {
-        // Hotkeys stay live while recording (navigate to the target node while
-        // talking) — except Esc, which discards instead of leaving the editor.
-        if (e.key === 'Escape') {
-          e.preventDefault();
-          discardRecording();
-          useStore.getState().setAudio(null);
-          useStore.getState().addToast('info', 'Recording discarded');
-          return;
-        }
-      } else {
-        return; // transcript panel owns the keyboard
-      }
-    }
     const st = useStore.getState();
     if (st.editing || st.editingRel) return; // an editor owns the keyboard
     const combo = comboFromEvent(e);
@@ -327,12 +308,6 @@ export function MindMapCanvas() {
       onKeyDown={onKeyDown}
       onMouseDown={onMouseDown}
       onDoubleClick={onHostDoubleClick}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={(e) => {
-        e.preventDefault();
-        const file = Array.from(e.dataTransfer.files).find(isAudioFile);
-        if (file) void transcribeBlob(file, file.name);
-      }}
     >
       <svg width="100%" height="100%">
         <defs>
@@ -378,7 +353,6 @@ export function MindMapCanvas() {
                 dir={layout.dirs.get(id) ?? 'right'}
                 selected={id === selectedId}
                 isRoot={id === doc.rootId || floatingRoots.has(id)}
-                todoPending={pendingTodo.includes(id)}
                 dimmed={draggedSubtree?.has(id) ?? false}
                 linkSource={id === linkSourceId}
                 onPressStart={(e) => handleNodePress(id, e)}

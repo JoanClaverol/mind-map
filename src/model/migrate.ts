@@ -22,6 +22,8 @@ export class MigrationError extends Error {}
  * invalid metadata loudly — LLMs need actionable errors, files need tolerance.)
  */
 function sanitizeNodeMeta(node: FileNode): void {
+  // todoId belonged to a removed integration — strip it from old files.
+  delete (node as FileNode & { todoId?: string }).todoId;
   if (node.color !== undefined && !NODE_COLORS.includes(node.color as NodeColor)) delete node.color;
   if (node.icon !== undefined) {
     const icon = typeof node.icon === 'string' ? node.icon.trim() : '';

@@ -99,11 +99,11 @@ body,
  * .node-rect and .node-rect.root so the cascade lets the dark root fill and
  * the selection fill/stroke (higher specificity / later in source) win.
  */
-.node-rect.color-sage { fill: #eaefe8; stroke: #b7c2ae; } /* from #5d9272 (sent-badge green) */
+.node-rect.color-sage { fill: #eaefe8; stroke: #b7c2ae; } /* from #5d9272 (badge green) */
 .node-rect.color-mist { fill: #eaedef; stroke: #b7bdc0; } /* from #5e81ac (selection slate) */
 .node-rect.color-clay { fill: #f6eee4; stroke: #d4bea5; } /* from #c08552 (arrow terracotta) */
 .node-rect.color-sand { fill: #f7f1df; stroke: #d7c698; } /* from #c9a227 (pin gold) */
-.node-rect.color-rose { fill: #f8ebe6; stroke: #dab7a9; } /* from #d3705f (recording red) */
+.node-rect.color-rose { fill: #f8ebe6; stroke: #dab7a9; } /* from #d3705f (muted red) */
 
 .node-rect.root {
   fill: var(--root-bg);
@@ -116,10 +116,6 @@ body,
 
 .node-rect.selected:not(.root) {
   fill: #f2f4f7;
-}
-
-.node-rect.pending {
-  stroke-dasharray: 4 3;
 }
 
 .node-text {
@@ -141,7 +137,7 @@ body,
   margin-right: 6px;
 }
 
-/* Marks a node carrying a note (inside bottom-right; sent-badge owns top-right). */
+/* Marks a node carrying a note (inside bottom-right). */
 .note-dot {
   fill: var(--muted);
   opacity: 0.65;
@@ -284,15 +280,6 @@ body,
   fill: var(--muted);
 }
 
-.sent-badge circle {
-  fill: #5d9272;
-}
-
-.sent-badge text {
-  font-size: 10px;
-  fill: #ffffff;
-}
-
 .node-editor {
   position: absolute;
   font-family: inherit;
@@ -308,153 +295,6 @@ body,
   outline: none;
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.audio-pill {
-  position: fixed;
-  bottom: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 18px;
-  border-radius: 999px;
-  background: var(--root-bg);
-  color: #fff;
-  font-size: 13px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
-  z-index: 9;
-}
-
-.rec-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: #d3705f;
-  animation: rec-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes rec-pulse {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.4;
-    transform: scale(0.75);
-  }
-}
-
-.spinner {
-  width: 12px;
-  height: 12px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.transcript-panel {
-  position: fixed;
-  bottom: 56px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(640px, calc(100vw - 48px));
-  background: var(--node-bg);
-  border: 1px solid var(--node-border);
-  border-radius: 14px;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.14);
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  z-index: 9;
-}
-
-.tp-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-}
-
-.tp-badge {
-  font-size: 12px;
-  color: var(--muted);
-  background: var(--bg);
-  border: 1px solid var(--node-border);
-  border-radius: 999px;
-  padding: 2px 10px;
-}
-
-.transcript-panel textarea {
-  font-family: inherit;
-  font-size: 14px;
-  line-height: 1.4;
-  padding: 10px 12px;
-  border: 1px solid var(--node-border);
-  border-radius: 8px;
-  resize: vertical;
-  outline-color: var(--node-selected);
-  background: var(--bg);
-}
-
-.tp-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.tp-actions button {
-  font-size: 12px;
-  padding: 7px 12px;
-  border: 1px solid var(--node-border);
-  border-radius: 8px;
-  background: var(--node-bg);
-  cursor: pointer;
-}
-
-.tp-actions button:hover:not(:disabled) {
-  border-color: var(--node-selected);
-}
-
-.tp-actions button.primary {
-  background: var(--node-selected);
-  border-color: var(--node-selected);
-  color: #fff;
-}
-
-.tp-actions button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.tp-busy {
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.chat-panel {
-  position: fixed;
-  bottom: 56px;
-  right: 24px;
-  width: min(380px, calc(100vw - 48px));
-  max-height: 60vh;
-  background: var(--node-bg);
-  border: 1px solid var(--node-border);
-  border-radius: 14px;
-  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.14);
-  display: flex;
-  flex-direction: column;
-  z-index: 9;
 }
 
 /* Node inspector (⇧I) — chat-panel visual family, top-right so both can be open. */
@@ -556,15 +396,6 @@ body,
 .swatch-sand { background: #f7f1df; border-color: #d7c698; }
 .swatch-rose { background: #f8ebe6; border-color: #dab7a9; }
 
-.chat-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 13px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--node-border);
-}
-
 .chat-close {
   border: none;
   background: none;
@@ -576,153 +407,6 @@ body,
 
 .chat-close:hover {
   color: var(--text);
-}
-
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.chat-empty {
-  color: var(--muted);
-  font-size: 13px;
-  margin: auto;
-  text-align: center;
-}
-
-.chat-message {
-  font-size: 13px;
-  line-height: 1.45;
-  padding: 8px 11px;
-  border-radius: 10px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.chat-message.user {
-  align-self: flex-end;
-  max-width: 85%;
-  background: var(--node-selected);
-  color: #fff;
-}
-
-.chat-message.assistant {
-  align-self: flex-start;
-  max-width: 95%;
-  background: var(--bg);
-  border: 1px solid var(--node-border);
-  color: var(--text);
-  white-space: normal;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-/* Rendered markdown inside an assistant bubble — compact spacing for a small panel. */
-.chat-md > :first-child {
-  margin-top: 0;
-}
-.chat-md > :last-child {
-  margin-bottom: 0;
-}
-.chat-md p {
-  margin: 0 0 6px;
-}
-.chat-md ul,
-.chat-md ol {
-  margin: 4px 0;
-  padding-left: 20px;
-}
-.chat-md li {
-  margin: 2px 0;
-}
-.chat-md h3,
-.chat-md h4,
-.chat-md h5,
-.chat-md h6 {
-  margin: 8px 0 4px;
-  font-size: 13px;
-  font-weight: 600;
-}
-.chat-md code {
-  font-size: 12px;
-  background: rgba(62, 58, 51, 0.08);
-  padding: 1px 4px;
-  border-radius: 4px;
-}
-.chat-md pre {
-  margin: 6px 0;
-  padding: 8px 10px;
-  background: var(--node-bg);
-  border: 1px solid var(--node-border);
-  border-radius: 6px;
-  overflow-x: auto;
-}
-.chat-md pre code {
-  background: none;
-  padding: 0;
-}
-.chat-md a {
-  color: var(--node-selected);
-}
-
-.chat-copy {
-  align-self: flex-end;
-  margin-top: 6px;
-  font-size: 11px;
-  color: var(--muted);
-  background: none;
-  border: 1px solid var(--node-border);
-  border-radius: 6px;
-  padding: 2px 8px;
-  cursor: pointer;
-}
-.chat-copy:hover {
-  border-color: var(--node-selected);
-  color: var(--text);
-}
-
-.chat-dots {
-  color: var(--muted);
-}
-
-.chat-input {
-  display: flex;
-  gap: 6px;
-  padding: 10px 12px;
-  border-top: 1px solid var(--node-border);
-}
-
-.chat-input textarea {
-  flex: 1;
-  font-family: inherit;
-  font-size: 13px;
-  line-height: 1.4;
-  padding: 8px 10px;
-  border: 1px solid var(--node-border);
-  border-radius: 8px;
-  resize: none;
-  outline-color: var(--node-selected);
-  background: var(--bg);
-}
-
-.chat-input button {
-  font-size: 12px;
-  padding: 7px 14px;
-  border: 1px solid var(--node-selected);
-  border-radius: 8px;
-  background: var(--node-selected);
-  color: #fff;
-  cursor: pointer;
-}
-
-.chat-input button:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .status-bar {

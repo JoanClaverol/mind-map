@@ -11,7 +11,7 @@ export interface HelpGroup {
   rows: HelpRow[];
 }
 
-const CATEGORY_ORDER = ['node', 'nav', 'link', 'clipboard', 'history', 'audio', 'todo', 'note', 'chat', 'map', 'view', 'gallery'];
+const CATEGORY_ORDER = ['node', 'nav', 'link', 'clipboard', 'history', 'tree', 'map', 'view', 'gallery'];
 
 const CATEGORY_LABELS: Record<string, string> = {
   node: 'Nodes',
@@ -19,10 +19,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   link: 'Arrows',
   clipboard: 'Clipboard',
   history: 'History',
-  audio: 'Voice',
-  todo: 'Todos',
-  note: 'Notes',
-  chat: 'Chat',
+  tree: 'Floating trees',
   map: 'Map',
   view: 'View',
   gallery: 'Gallery',

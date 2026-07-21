@@ -16,4 +16,4 @@ Canonical docs — read these rather than duplicating their content here:
 
 ## Verify
 
-`pnpm test`, `pnpm exec tsc --noEmit`, then manual: `pnpm dev` → http://localhost:5454. The optional todo-push feature needs an external second-brain MCP server (default `localhost:8000`).
+`pnpm test`, `pnpm exec tsc --noEmit`, then manual: `pnpm dev` → http://localhost:5454.
