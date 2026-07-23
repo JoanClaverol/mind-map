@@ -1,7 +1,0 @@
-node_modules
-dist
-maps
-.env
-.git
-*.log
-.DS_Store
