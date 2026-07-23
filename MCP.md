@@ -45,7 +45,7 @@ Returns all saved maps with id, title, node count, and last update time.
 ### `read_map_markdown`
 
 - Arguments: `{ map_id: string }`
-- Returns the map as a nested markdown outline **annotated with node ids**, followed by a `## Relationships` section listing the arrows — everything needed to edit surgically without calling `read_map`:
+- Returns the map as a nested markdown outline **annotated with node ids**, followed by `## Relationships` and `## Groups` sections listing the arrows and group boundaries — everything needed to edit surgically without calling `read_map`:
 
 ```markdown
 # Trip to Japan
@@ -57,6 +57,9 @@ Returns all saved maps with id, title, node count, and last update time.
 
 ## Relationships
 - [rM4nP6bV0zXy] q7Rt2LwN8vXc ("Flights") -> dF5gH1jK3sQw ("Accommodation") — "book together"
+
+## Groups
+- [gK8sT3mW5nRq] "logistics" — members: q7Rt2LwN8vXc ("Flights"), dF5gH1jK3sQw ("Accommodation")
 ```
 
 Node metadata renders inline: the icon before the text, `[color]` and `#tags` after the id, and the note as an indented `>` line. **These annotations are read-only decoration — never paste them back into an outline** (`create_map_from_outline`, `add_nodes`): the parser would treat `>` lines as continuation text. Use `set_node_meta` to write metadata.
@@ -64,7 +67,7 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 ### `get_subtree`
 
 - Arguments: `{ map_id: string, node_id: string, depth?: number }`
-- Returns one branch as an id-annotated outline plus any arrows touching it. Cheaper than `read_map` on large maps.
+- Returns one branch as an id-annotated outline plus any arrows and groups touching it. Cheaper than `read_map` on large maps.
 - `depth` limits levels of descendants; a cut-off node shows `… (+N children hidden)`.
 
 ### `find_nodes`
@@ -95,7 +98,7 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 ### `delete_node`
 
 - Arguments: `{ map_id: string, node_id: string }`
-- Deletes the node and its whole subtree; a **floating tree's root** deletes that whole tree. The main root cannot be deleted. Relationships touching deleted nodes are pruned.
+- Deletes the node and its whole subtree; a **floating tree's root** deletes that whole tree. The main root cannot be deleted. Relationships touching deleted nodes are pruned; group members are pruned too, and a group left with fewer than 2 members dissolves.
 
 ### `create_tree`
 
@@ -132,6 +135,24 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 - Arguments: `{ map_id: string, relationship_id: string }`
 - Deletes the arrow; the nodes stay.
 
+### `add_group`
+
+- Arguments: `{ map_id: string, member_ids: string[], label?: string, color?: string }`
+- Draws a **dashed boundary** around a set of nodes to relate them — the members can come from **different parents**, anywhere in the map. It encloses exactly the listed nodes, not their subtrees.
+- Needs at least 2 distinct members. Overlapping groups are allowed; a second group with an identical member set is rejected. `color` is a palette name (`sage | mist | clay | sand | rose`).
+- Returns the group id for later edit/delete.
+- Use groups for cross-cutting themes an arrow can't express: "these five ideas across three branches are all phase 1", "these are the open risks".
+
+### `edit_group`
+
+- Arguments: `{ map_id: string, group_id: string, member_ids?: string[], label?: string, color?: string }`
+- Partial update: absent fields are left untouched. `member_ids` **replaces** the whole member list (still ≥ 2); `label: ""` removes the label; `color: "none"` clears the color.
+
+### `delete_group`
+
+- Arguments: `{ map_id: string, group_id: string }`
+- Deletes the boundary; the nodes stay.
+
 ### `apply_ops`
 
 - Arguments: `{ map_id: string, ops: BatchOp[] }` (1–50 ops)
@@ -147,6 +168,9 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
   { "op": "add_relationship", "from_id": "…", "to_id": "…", "label": "causes" },
   { "op": "edit_relationship", "relationship_id": "…", "label": "…" },
   { "op": "delete_relationship", "relationship_id": "…" },
+  { "op": "add_group", "member_ids": ["…", "…"], "label": "phase 1", "color": "sage" },
+  { "op": "edit_group", "group_id": "…", "member_ids": ["…", "…"], "label": "…" },
+  { "op": "delete_group", "group_id": "…" },
   { "op": "create_tree", "markdown": "- New cluster\n  - Spark", "x": 500, "y": 100 },
   { "op": "detach_node", "node_id": "…", "x": 700, "y": 40 },
   { "op": "set_node_meta", "node_id": "…", "color": "sage", "icon": "✅", "tags": ["decided"] }
@@ -173,6 +197,7 @@ interface MapFile {
   layout?: 'right' | 'balanced' | 'down' | 'timeline';
   pinned?: boolean;
   relationships?: Relationship[];
+  groups?: Group[];
   root: FileNode;
   floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
 }
@@ -195,12 +220,20 @@ interface Relationship {
   to: string;           // target node id
   label?: string;
 }
+
+interface Group {
+  id: string;
+  members: string[];    // node ids, possibly from different parents; always ≥ 2
+  label?: string;
+  color?: string;       // palette name: sage | mist | clay | sand | rose
+}
 ```
 
 - The root node is the map title. `floating` holds detached trees (XMind floating topics); `pos` is the world position of each tree root, advisory for you (the user drags trees).
 - `layout` defaults to `'right'` if omitted; floating trees lay out as compact right-trees unless their root carries a `style` override.
 - A node's `style` renders its whole subtree in that structure inside the map (e.g. an org-chart branch in a right-tree). The field round-trips through all tools; there is no dedicated tool argument for it yet — in the app it's cycled with ⇧B.
 - `relationships` are free directional arrows between any two nodes — including across trees; they are **not** parent/child links.
+- `groups` are dashed boundaries enclosing exactly their member nodes (not subtrees) — a visual/semantic cluster that can span branches and trees.
 
 ## How to generate a good map
 
@@ -260,6 +293,12 @@ This will create a root node "Trip to Japan" with four children, each with their
 1. Locate the two node ids (`find_nodes` or `read_map_markdown`).
 2. `add_relationship` with a short label naming the connection ("causes", "depends on", "contrasts with").
 3. Arrows are for cross-cutting links — if one idea simply belongs under another, `move_node` it there instead.
+
+### Group ideas across branches
+
+1. When several nodes — possibly under different parents — share a theme an arrow can't express ("all phase 1", "the open risks"), `add_group` them with a short label.
+2. A group encloses exactly its members, not their subtrees: list every node you mean.
+3. Prefer an arrow for a pairwise directed link, a parent for containment, a group for an unordered set that belongs together.
 
 ### Brainstorm with floating trees
 

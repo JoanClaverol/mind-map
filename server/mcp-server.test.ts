@@ -642,4 +642,117 @@ describe('mcp-server tools', () => {
     const none = textContent(await client.callTool({ name: 'find_nodes', arguments: { query: 'zzzznope' } }));
     expect(none).toBe('No matches.');
   });
+  it('group tools: add, read back, edit, prune on delete, delete', async () => {
+    const client = await createClient();
+    const created = textContent(
+      await client.callTool({
+        name: 'create_map_from_outline',
+        arguments: { title: 'Grouped', markdown: '- Alpha\n  - A1\n- Beta\n- Gamma' },
+      }),
+    );
+    const mapId = created.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+    const read = async () =>
+      JSON.parse(textContent(await client.callTool({ name: 'read_map', arguments: { map_id: mapId } }))) as MapFile;
+    let map = await read();
+    const [alpha, beta, gamma] = map.root.children;
+    const a1 = alpha.children[0];
+
+    // add_group across different parents (A1 under Alpha, Beta under root)
+    const added = await client.callTool({
+      name: 'add_group',
+      arguments: { map_id: mapId, member_ids: [a1.id, beta.id, gamma.id], label: 'theme', color: 'sage' },
+    });
+    expect(added.isError).toBeFalsy();
+    const groupId = textContent(added).match(/group ([A-Za-z0-9_-]+)/)?.[1]!;
+    map = await read();
+    expect(map.groups).toEqual([{ id: groupId, members: [a1.id, beta.id, gamma.id], label: 'theme', color: 'sage' }]);
+
+    // the markdown read surfaces the group
+    const md = textContent(await client.callTool({ name: 'read_map_markdown', arguments: { map_id: mapId } }));
+    expect(md).toContain('## Groups');
+    expect(md).toContain(`[${groupId}] "theme"`);
+
+    // and get_subtree scopes to groups touching the branch
+    const sub = textContent(
+      await client.callTool({ name: 'get_subtree', arguments: { map_id: mapId, node_id: alpha.id } }),
+    );
+    expect(sub).toContain('## Groups');
+
+    // edit: replace members, clear label and color
+    const edited = await client.callTool({
+      name: 'edit_group',
+      arguments: { map_id: mapId, group_id: groupId, member_ids: [beta.id, gamma.id], label: '', color: 'none' },
+    });
+    expect(edited.isError).toBeFalsy();
+    map = await read();
+    expect(map.groups).toEqual([{ id: groupId, members: [beta.id, gamma.id] }]);
+
+    // deleting a member prunes it; below 2 the group dissolves and the key drops from the file
+    await client.callTool({ name: 'delete_node', arguments: { map_id: mapId, node_id: beta.id } });
+    map = await read();
+    expect(map.groups).toBeUndefined();
+
+    // validation errors surface loudly
+    const tooFew = await client.callTool({
+      name: 'add_group',
+      arguments: { map_id: mapId, member_ids: [gamma.id, gamma.id] },
+    });
+    expect(tooFew.isError).toBe(true);
+    expect(textContent(tooFew)).toContain('at least 2');
+    const missing = await client.callTool({
+      name: 'delete_group',
+      arguments: { map_id: mapId, group_id: 'nope' },
+    });
+    expect(missing.isError).toBe(true);
+  });
+
+  it('apply_ops creates groups atomically alongside other edits', async () => {
+    const client = await createClient();
+    const created = textContent(
+      await client.callTool({
+        name: 'create_map_from_outline',
+        arguments: { title: 'Batch groups', markdown: '- One\n- Two' },
+      }),
+    );
+    const mapId = created.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+    const map = JSON.parse(
+      textContent(await client.callTool({ name: 'read_map', arguments: { map_id: mapId } })),
+    ) as MapFile;
+    const [one, two] = map.root.children;
+    const result = await client.callTool({
+      name: 'apply_ops',
+      arguments: {
+        map_id: mapId,
+        ops: [
+          { op: 'add_group', member_ids: [one.id, two.id], label: 'pair' },
+          { op: 'edit_node', node_id: one.id, text: 'One!' },
+        ],
+      },
+    });
+    expect(result.isError).toBeFalsy();
+    expect(textContent(result)).toContain('add_group');
+    const after = JSON.parse(
+      textContent(await client.callTool({ name: 'read_map', arguments: { map_id: mapId } })),
+    ) as MapFile;
+    expect(after.groups).toHaveLength(1);
+    expect(after.groups![0].label).toBe('pair');
+    expect(after.root.children[0].text).toBe('One!');
+
+    // a failing group op aborts the whole batch
+    const failing = await client.callTool({
+      name: 'apply_ops',
+      arguments: {
+        map_id: mapId,
+        ops: [
+          { op: 'edit_node', node_id: one.id, text: 'clobbered' },
+          { op: 'add_group', member_ids: [one.id, 'ghost'] },
+        ],
+      },
+    });
+    expect(failing.isError).toBe(true);
+    const unchanged = JSON.parse(
+      textContent(await client.callTool({ name: 'read_map', arguments: { map_id: mapId } })),
+    ) as MapFile;
+    expect(unchanged.root.children[0].text).toBe('One!');
+  });
 });

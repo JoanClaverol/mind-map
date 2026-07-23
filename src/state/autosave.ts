@@ -21,6 +21,7 @@ function buildMapFile(): MapFile | null {
     layout: s.doc.layout,
     pinned: s.pinned ? true : undefined, // JSON.stringify drops undefined — files stay minimal
     relationships: s.doc.relationships.length ? s.doc.relationships : undefined,
+    groups: s.doc.groups.length ? s.doc.groups : undefined,
     root: denormalize(s.doc),
     floating: serializeFloating(s.doc),
   };

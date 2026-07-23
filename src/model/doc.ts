@@ -6,6 +6,7 @@ import {
   type DocNode,
   type FileNode,
   type FloatingTree,
+  type Group,
   type LayoutStyle,
   type Position,
   type Relationship,
@@ -21,6 +22,7 @@ export function normalize(
   layout: LayoutStyle = 'right',
   relationships: Relationship[] = [],
   floating: FloatingTree[] = [],
+  groups: Group[] = [],
 ): Doc {
   const nodes: Record<string, DocNode> = {};
   const walk = (n: FileNode) => {
@@ -47,7 +49,17 @@ export function normalize(
   }
   // Drop dangling/self relationships so render and commands can trust the list.
   const rels = relationships.filter((r) => r.from !== r.to && nodes[r.from] && nodes[r.to]);
-  return { rootId: root.id, layout, nodes, relationships: rels, floating: docFloating };
+  // Groups: keep only existing members (deduped); a group needs ≥ 2 to mean anything.
+  const docGroups: Group[] = [];
+  for (const g of groups) {
+    const members = [...new Set(g.members)].filter((m) => nodes[m]);
+    if (members.length < 2) continue;
+    const out: Group = { id: g.id, members };
+    if (g.label) out.label = g.label;
+    if (g.color) out.color = g.color;
+    docGroups.push(out);
+  }
+  return { rootId: root.id, layout, nodes, relationships: rels, floating: docFloating, groups: docGroups };
 }
 
 /** Flat normalized doc → nested file tree. */

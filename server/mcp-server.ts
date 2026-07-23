@@ -46,15 +46,17 @@ async function mutateMap(
   if (!storage.isValidId(mapId)) return { error: 'invalid map id' };
   const map = await storage.readMap(mapId);
   if (!map) return { error: 'map not found' };
-  const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
+  const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
   for (let i = 0; i < ops.length; i++) {
     const result = applyDocOp(doc, ops[i]);
     if (!result.ok) return { error: result.reason, failedIndex: i };
   }
   const updated: MapFile = { ...map, root: denormalize(doc), updatedAt: nowIso() };
-  // Relationship/floating changes flow through; omit when empty to keep files minimal.
+  // Relationship/group/floating changes flow through; omit when empty to keep files minimal.
   if (doc.relationships.length) updated.relationships = doc.relationships;
   else delete updated.relationships;
+  if (doc.groups.length) updated.groups = doc.groups;
+  else delete updated.groups;
   const floating = serializeFloating(doc);
   if (floating) updated.floating = floating;
   else delete updated.floating;
@@ -105,6 +107,20 @@ function relationshipsSection(doc: Doc, scope?: Set<string>): string | null {
   return `## Relationships\n${lines.join('\n')}`;
 }
 
+/**
+ * The group boundaries of a map as a markdown section, or null when there are
+ * none. With `scope`, only groups with a member in scope are included.
+ */
+function groupsSection(doc: Doc, scope?: Set<string>): string | null {
+  const groups = doc.groups.filter((g) => !scope || g.members.some((m) => scope.has(m)));
+  if (groups.length === 0) return null;
+  const lines = groups.map((g) => {
+    const members = g.members.map((m) => `${m} ("${truncateText(doc.nodes[m].text)}")`).join(', ');
+    return `- [${g.id}]${g.label ? ` "${g.label}"` : ''} — members: ${members}`;
+  });
+  return `## Groups\n${lines.join('\n')}`;
+}
+
 async function readTextFile(...segments: string[]): Promise<string | null> {
   try {
     return await fs.readFile(path.resolve(process.cwd(), ...segments), 'utf8');
@@ -126,6 +142,8 @@ interface MapFile {
   layout?: 'right' | 'balanced' | 'down' | 'timeline';
   pinned?: boolean;
   relationships?: Array<{ id: string; from: string; to: string; label?: string }>;
+  // Dashed boundaries around sets of nodes (≥ 2 members each, possibly from different parents)
+  groups?: Array<{ id: string; members: string[]; label?: string; color?: string }>;
   root: FileNode;
   floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
 }
@@ -191,22 +209,21 @@ export function createMcpServer(): McpServer {
     'read_map_markdown',
     {
       description:
-        'Reads a map as a nested markdown outline annotated with node ids, followed by its relationship arrows — everything needed to edit surgically without calling read_map.',
+        'Reads a map as a nested markdown outline annotated with node ids, followed by its relationship arrows and group boundaries — everything needed to edit surgically without calling read_map.',
       inputSchema: z.object({ map_id: z.string().describe('The map id') }),
     },
     async (args) => {
       if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
-      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
+      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
       const markdown = branchToMarkdown(doc, map.root.id, { ids: true, meta: true });
       const floatingBlocks = doc.floating.map((f) => branchToMarkdown(doc, f.rootId, { ids: true, meta: true }));
       const floatingSection = floatingBlocks.length ? `\n\n## Floating trees\n${floatingBlocks.join('\n\n')}` : '';
-      const rels = relationshipsSection(doc);
+      const sections = [relationshipsSection(doc), groupsSection(doc)].filter((s): s is string => s !== null);
+      const tail = sections.length ? `\n\n${sections.join('\n\n')}` : '';
       return {
-        content: [
-          { type: 'text', text: `# ${map.title}\n\n${markdown}${floatingSection}${rels ? `\n\n${rels}` : ''}` },
-        ],
+        content: [{ type: 'text', text: `# ${map.title}\n\n${markdown}${floatingSection}${tail}` }],
       };
     },
   );
@@ -215,7 +232,7 @@ export function createMcpServer(): McpServer {
     'get_subtree',
     {
       description:
-        'Reads one branch of a map as an id-annotated outline, plus any relationship arrows touching it. Cheaper than read_map for large maps. depth limits how many levels of descendants are included.',
+        'Reads one branch of a map as an id-annotated outline, plus any relationship arrows and group boundaries touching it. Cheaper than read_map for large maps. depth limits how many levels of descendants are included.',
       inputSchema: z.object({
         map_id: z.string().describe('The map id'),
         node_id: z.string().describe('Root node of the branch to read'),
@@ -226,11 +243,14 @@ export function createMcpServer(): McpServer {
       if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
-      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
+      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
       if (!doc.nodes[args.node_id]) return errorResult(`node ${args.node_id} not found`);
       const markdown = branchToMarkdown(doc, args.node_id, { ids: true, meta: true, maxDepth: args.depth });
-      const rels = relationshipsSection(doc, new Set(subtreeIds(doc, args.node_id)));
-      return { content: [{ type: 'text', text: `${markdown}${rels ? `\n\n${rels}` : ''}` }] };
+      const scope = new Set(subtreeIds(doc, args.node_id));
+      const sections = [relationshipsSection(doc, scope), groupsSection(doc, scope)].filter(
+        (s): s is string => s !== null,
+      );
+      return { content: [{ type: 'text', text: `${markdown}${sections.length ? `\n\n${sections.join('\n\n')}` : ''}` }] };
     },
   );
 
@@ -543,6 +563,79 @@ export function createMcpServer(): McpServer {
     },
   );
 
+  server.registerTool(
+    'add_group',
+    {
+      description:
+        'Draws a dashed boundary around a set of nodes — possibly from different parents — to relate them visually and semantically. Encloses exactly the listed nodes (not their subtrees). Needs at least 2 distinct members; overlapping groups are allowed, an identical member set is not. Returns the group id for later edit/delete. The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        member_ids: z.array(z.string()).min(2).describe('Ids of the nodes to enclose (at least 2)'),
+        label: z.string().optional().describe('Optional label shown on the boundary'),
+        color: z.enum([...NODE_COLORS]).optional().describe('Optional boundary color'),
+      }),
+    },
+    async (args) => {
+      const groupId = nanoid(12);
+      const r = await mutateMap(args.map_id, [
+        { type: 'add_group', groupId, members: args.member_ids, label: args.label, color: args.color },
+      ]);
+      if ('error' in r) return errorResult(r.error);
+      return {
+        content: [{ type: 'text', text: `Added group ${groupId} around ${args.member_ids.join(', ')}` }],
+      };
+    },
+  );
+
+  server.registerTool(
+    'edit_group',
+    {
+      description:
+        'Updates a group boundary: member_ids replaces the whole member list (still needs ≥ 2), label "" removes the label, color "none" clears the color. Absent fields are left untouched. The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z
+        .object({
+          map_id: z.string().describe('The map id'),
+          group_id: z.string().describe('Id of the group (from add_group or read_map_markdown)'),
+          member_ids: z.array(z.string()).min(2).optional().describe('Replaces the member list (at least 2 ids)'),
+          label: z.string().optional().describe('New label; empty string removes it'),
+          color: z.enum([...NODE_COLORS, 'none']).optional().describe('Boundary color; "none" clears'),
+        })
+        .refine((a) => a.member_ids !== undefined || a.label !== undefined || a.color !== undefined, {
+          message: 'provide at least one of member_ids/label/color',
+        }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [
+        {
+          type: 'edit_group',
+          groupId: args.group_id,
+          members: args.member_ids,
+          label: args.label === undefined ? undefined : args.label || null,
+          color: args.color === undefined ? undefined : args.color === 'none' ? null : (args.color as NodeColor),
+        },
+      ]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Updated group ${args.group_id}` }] };
+    },
+  );
+
+  server.registerTool(
+    'delete_group',
+    {
+      description:
+        'Deletes a group boundary (the nodes stay). The edit appears live in an open browser tab and is undoable there.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        group_id: z.string().describe('Id of the group to delete'),
+      }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [{ type: 'delete_group', groupId: args.group_id }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Deleted group ${args.group_id}` }] };
+    },
+  );
+
   const batchOp = z.discriminatedUnion('op', [
     z.object({
       op: z.literal('add_nodes'),
@@ -565,6 +658,20 @@ export function createMcpServer(): McpServer {
     }),
     z.object({ op: z.literal('edit_relationship'), relationship_id: z.string(), label: z.string() }),
     z.object({ op: z.literal('delete_relationship'), relationship_id: z.string() }),
+    z.object({
+      op: z.literal('add_group'),
+      member_ids: z.array(z.string()).min(2),
+      label: z.string().optional(),
+      color: z.enum([...NODE_COLORS]).optional(),
+    }),
+    z.object({
+      op: z.literal('edit_group'),
+      group_id: z.string(),
+      member_ids: z.array(z.string()).min(2).optional(),
+      label: z.string().optional(),
+      color: z.enum([...NODE_COLORS, 'none']).optional(),
+    }),
+    z.object({ op: z.literal('delete_group'), group_id: z.string() }),
     z.object({
       op: z.literal('create_tree'),
       markdown: z.string().describe('Outline with exactly one top-level bullet'),
@@ -650,6 +757,26 @@ export function createMcpServer(): McpServer {
           case 'delete_relationship':
             ops.push({ type: 'delete_relationship', relId: item.relationship_id });
             summaries.push(`[${i}] delete_relationship ${item.relationship_id}`);
+            break;
+          case 'add_group': {
+            const groupId = nanoid(12);
+            ops.push({ type: 'add_group', groupId, members: item.member_ids, label: item.label, color: item.color });
+            summaries.push(`[${i}] add_group ${groupId} around ${item.member_ids.join(', ')}`);
+            break;
+          }
+          case 'edit_group':
+            ops.push({
+              type: 'edit_group',
+              groupId: item.group_id,
+              members: item.member_ids,
+              label: item.label === undefined ? undefined : item.label || null,
+              color: item.color === undefined ? undefined : item.color === 'none' ? null : (item.color as NodeColor),
+            });
+            summaries.push(`[${i}] edit_group ${item.group_id}`);
+            break;
+          case 'delete_group':
+            ops.push({ type: 'delete_group', groupId: item.group_id });
+            summaries.push(`[${i}] delete_group ${item.group_id}`);
             break;
           case 'create_tree': {
             const branches = markdownToBranches(item.markdown);

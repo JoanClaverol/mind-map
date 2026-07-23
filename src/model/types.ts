@@ -81,6 +81,20 @@ export interface Relationship {
   label?: string;
 }
 
+/**
+ * A boundary grouping arbitrary nodes — possibly from different parents —
+ * drawn as a dashed hull around exactly the member nodes (not their subtrees).
+ * Needs ≥ 2 members; deleting nodes prunes members and drops shrunken groups.
+ */
+export interface Group {
+  id: string;
+  /** Member node ids (distinct, each an existing node). */
+  members: string[];
+  label?: string;
+  /** Palette name (NODE_COLORS) — typed loosely because disk is untrusted; migrate narrows. */
+  color?: string;
+}
+
 /** One map = one JSON file in maps/. */
 export interface MapFile {
   schemaVersion: typeof SCHEMA_VERSION;
@@ -97,6 +111,8 @@ export interface MapFile {
   folder?: string;
   /** Free arrows linking nodes across trees. Omitted when empty so files stay minimal. */
   relationships?: Relationship[];
+  /** Boundaries around sets of nodes. Omitted when empty so files stay minimal. */
+  groups?: Group[];
   root: FileNode;
   /** Floating trees (XMind floating topics). Omitted when empty so files stay minimal. */
   floating?: FloatingTree[];
@@ -162,6 +178,8 @@ export interface Doc {
   nodes: Record<string, DocNode>;
   /** Always present (possibly empty) so relationship commands never null-check. */
   relationships: Relationship[];
+  /** Always present (possibly empty) so group commands never null-check. */
+  groups: Group[];
   /** Floating trees: root ids + world positions. Always present, like relationships. */
   floating: Array<{ rootId: string; pos: Position }>;
 }

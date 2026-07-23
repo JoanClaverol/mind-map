@@ -1,6 +1,6 @@
 import { branchStyleOf, buildParentMap } from '../model/doc';
 import { LAYOUT_LABELS } from '../model/types';
-import { useStore } from '../state/store';
+import { canvasMode, useStore } from '../state/store';
 
 const SAVE_LABELS = {
   idle: '',
@@ -10,10 +10,14 @@ const SAVE_LABELS = {
   error: 'save failed!',
 } as const;
 
-const HINTS = 'Tab child · Enter sibling · Space edit · hjkl move · ⇧A arrow · ⇧N tree · ⇧I inspect · ⌘F search · ⌘. hoist · ⇧S structure · ⇧B branch · / fold · ⌘Z undo · ⌘0 fit · Esc gallery · ? help';
-// Contextual hints that teach the arrow flow while it's in progress.
-const LINK_HINTS = 'Drawing arrow — hjkl / click to a target · Enter connect · Esc cancel';
-const REL_HINTS = 'Arrow selected — Enter label · Delete remove · Esc deselect';
+const HINTS = 'Tab child · Enter sibling · Space edit · hjkl move · ⇧A arrow · ⇧G group · ⇧N tree · ⇧I inspect · ⌘F search · ⌘. hoist · ⇧S structure · ⇧B branch · / fold · ⌘Z undo · ⌘0 fit · Esc gallery · ? help';
+// Contextual hints that teach each canvas mode while it's active (see canvasMode).
+const MODE_HINTS = {
+  link: 'Drawing arrow — hjkl / click to a target · Enter connect · Esc cancel',
+  group: 'Grouping — hjkl to a node · Space add/remove · Enter create · Esc cancel',
+  relsel: 'Arrow selected — Enter label · Delete remove · Esc deselect',
+  groupsel: 'Group selected — Enter label · C color · ⇧G members · Delete remove · Esc deselect',
+} as const;
 
 function trunc(text: string, max = 18): string {
   const t = text.trim() || '(empty)';
@@ -39,22 +43,18 @@ export function StatusBar() {
     s.doc && s.selectedId && s.doc.nodes[s.selectedId] ? branchStyleOf(s.doc, s.selectedId) : undefined,
   );
   const zoom = useStore((s) => s.viewport.zoom);
-  const linking = useStore((s) => s.linking);
-  const selectedRelId = useStore((s) => s.selectedRelId);
+  const interaction = useStore(canvasMode);
   const hoistId = useStore((s) => s.hoistId);
   const filterQuery = useStore((s) => s.filterQuery);
   useStore((s) => s.doc); // re-render the breadcrumb when the doc changes
-  const mode = linking ? 'link' : selectedRelId ? 'rel' : filterQuery ? 'filter' : hoistId ? 'hoist' : null;
-  const hints =
-    mode === 'link'
-      ? LINK_HINTS
-      : mode === 'rel'
-        ? REL_HINTS
-        : mode === 'filter'
-          ? `Filter “${trunc(filterQuery!, 32)}” — non-matches dimmed · ⌘F edit · Esc clear`
-          : mode === 'hoist'
-            ? `Hoisted: ${hoistPath() ?? ''} · ⌘. on root up one · Esc exit`
-            : HINTS;
+  const mode = interaction ?? (filterQuery ? 'filter' : hoistId ? 'hoist' : null);
+  const hints = interaction
+    ? MODE_HINTS[interaction]
+    : mode === 'filter'
+      ? `Filter “${trunc(filterQuery!, 32)}” — non-matches dimmed · ⌘F edit · Esc clear`
+      : mode === 'hoist'
+        ? `Hoisted: ${hoistPath() ?? ''} · ⌘. on root up one · Esc exit`
+        : HINTS;
   return (
     <div className="status-bar">
       <span className="status-title">{title}</span>

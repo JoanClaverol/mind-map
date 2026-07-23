@@ -11,12 +11,13 @@ export interface HelpGroup {
   rows: HelpRow[];
 }
 
-const CATEGORY_ORDER = ['node', 'nav', 'link', 'clipboard', 'history', 'tree', 'map', 'view', 'gallery'];
+const CATEGORY_ORDER = ['node', 'nav', 'link', 'group', 'clipboard', 'history', 'tree', 'map', 'view', 'gallery'];
 
 const CATEGORY_LABELS: Record<string, string> = {
   node: 'Nodes',
   nav: 'Navigate',
   link: 'Arrows',
+  group: 'Groups',
   clipboard: 'Clipboard',
   history: 'History',
   tree: 'Floating trees',

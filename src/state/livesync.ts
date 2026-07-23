@@ -63,6 +63,7 @@ export function initLiveSync(mapId: string): () => void {
           map.title === cur.title &&
           JSON.stringify(map.root) === JSON.stringify(denormalize(cur.doc)) &&
           JSON.stringify(map.relationships ?? []) === JSON.stringify(cur.doc.relationships) &&
+          JSON.stringify(map.groups ?? []) === JSON.stringify(cur.doc.groups) &&
           JSON.stringify(map.floating ?? []) === JSON.stringify(serializeFloating(cur.doc) ?? []);
         if (unchanged) return;
         cur.loadMap(map);

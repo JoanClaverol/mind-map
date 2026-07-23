@@ -402,3 +402,83 @@ describe('applyDocOp set_node_meta', () => {
     expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', style: 'zigzag' as never }).ok).toBe(false);
   });
 });
+
+describe('applyDocOp groups', () => {
+  it('add_group dedupes members and trims the label', () => {
+    const doc = makeDoc();
+    const r = applyDocOp(doc, { type: 'add_group', groupId: 'g1', members: ['b', 'c', 'b'], label: ' theme ' });
+    expect(r.ok).toBe(true);
+    expect(doc.groups).toEqual([{ id: 'g1', members: ['b', 'c'], label: 'theme' }]);
+  });
+
+  it('add_group rejects < 2 distinct members, missing nodes, duplicate ids, and duplicate member sets', () => {
+    const doc = makeDoc();
+    expect(applyDocOp(doc, { type: 'add_group', groupId: 'g1', members: ['b', 'b'] }).ok).toBe(false);
+    expect(applyDocOp(doc, { type: 'add_group', groupId: 'g1', members: ['b', 'nope'] }).ok).toBe(false);
+    expect(applyDocOp(doc, { type: 'add_group', groupId: 'g1', members: ['b', 'c'] }).ok).toBe(true);
+    expect(applyDocOp(doc, { type: 'add_group', groupId: 'g1', members: ['a1', 'c'] }).ok).toBe(false);
+    const sameSet = applyDocOp(doc, { type: 'add_group', groupId: 'g2', members: ['c', 'b'] });
+    expect(sameSet.ok).toBe(false);
+    expect(!sameSet.ok && sameSet.reason).toContain('already exists');
+    expect(applyDocOp(doc, { type: 'add_group', groupId: 'g2', members: ['a1', 'c'], color: 'crimson' as never }).ok).toBe(false);
+    expect(doc.groups).toHaveLength(1);
+  });
+
+  it('edit_group replaces members, clears label and color, validates before mutating', () => {
+    const doc = makeDoc();
+    applyDocOp(doc, { type: 'add_group', groupId: 'g1', members: ['b', 'c'], label: 'x', color: 'sage' });
+    expect(applyDocOp(doc, { type: 'edit_group', groupId: 'g1', members: ['a', 'a1'] }).ok).toBe(true);
+    expect(doc.groups[0].members).toEqual(['a', 'a1']);
+    expect(applyDocOp(doc, { type: 'edit_group', groupId: 'g1', label: '', color: null }).ok).toBe(true);
+    expect(doc.groups[0].label).toBeUndefined();
+    expect(doc.groups[0].color).toBeUndefined();
+    const before = JSON.stringify(doc);
+    expect(applyDocOp(doc, { type: 'edit_group', groupId: 'g1', members: ['a', 'nope'] }).ok).toBe(false);
+    expect(applyDocOp(doc, { type: 'edit_group', groupId: 'g1' }).ok).toBe(false); // no fields
+    expect(applyDocOp(doc, { type: 'edit_group', groupId: 'nope', label: 'x' }).ok).toBe(false);
+    expect(JSON.stringify(doc)).toBe(before);
+  });
+
+  it('edit_group rejects a member set identical to another group, but accepts its own', () => {
+    const doc = makeDoc();
+    applyDocOp(doc, { type: 'add_group', groupId: 'g1', members: ['b', 'c'] });
+    applyDocOp(doc, { type: 'add_group', groupId: 'g2', members: ['a', 'a1'] });
+    const clash = applyDocOp(doc, { type: 'edit_group', groupId: 'g2', members: ['c', 'b'] });
+    expect(clash.ok).toBe(false);
+    expect(!clash.ok && clash.reason).toContain('already exists');
+    // Re-submitting a group's own set (e.g. reordered) is not a clash with itself.
+    expect(applyDocOp(doc, { type: 'edit_group', groupId: 'g1', members: ['c', 'b'] }).ok).toBe(true);
+  });
+
+  it('delete_group removes the boundary and leaves the nodes', () => {
+    const doc = makeDoc();
+    applyDocOp(doc, { type: 'add_group', groupId: 'g1', members: ['b', 'c'] });
+    expect(applyDocOp(doc, { type: 'delete_group', groupId: 'g1' }).ok).toBe(true);
+    expect(doc.groups).toEqual([]);
+    expect(doc.nodes.b).toBeDefined();
+    expect(applyDocOp(doc, { type: 'delete_group', groupId: 'g1' }).ok).toBe(false);
+  });
+
+  it('delete_node prunes members and dissolves groups shrunk below 2', () => {
+    const doc = makeDoc();
+    applyDocOp(doc, { type: 'add_group', groupId: 'keep', members: ['a1', 'b', 'c'] });
+    applyDocOp(doc, { type: 'add_group', groupId: 'gone', members: ['a1', 'b'] });
+    // Deleting a removes its subtree (a1) — 'keep' shrinks, 'gone' dissolves.
+    expect(applyDocOp(doc, { type: 'delete_node', nodeId: 'a' }).ok).toBe(true);
+    expect(doc.groups).toEqual([{ id: 'keep', members: ['b', 'c'] }]);
+  });
+
+  it('normalize drops dangling members and groups left below 2', () => {
+    const doc = normalize(
+      { id: 'root', text: 'r', children: [{ id: 'a', text: 'a', children: [] }, { id: 'b', text: 'b', children: [] }] },
+      'right',
+      [],
+      [],
+      [
+        { id: 'g1', members: ['a', 'b', 'a', 'ghost'] },
+        { id: 'g2', members: ['a', 'ghost'] },
+      ],
+    );
+    expect(doc.groups).toEqual([{ id: 'g1', members: ['a', 'b'] }]);
+  });
+});

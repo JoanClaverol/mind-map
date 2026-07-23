@@ -110,6 +110,7 @@ interface MapFile {
   layout?: 'right' | 'balanced' | 'down' | 'timeline';
   pinned?: boolean;
   relationships?: Relationship[];
+  groups?: Group[];
   root: FileNode;
   /** Floating trees (XMind floating topics); pos = world coords of each tree root. */
   floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
@@ -132,6 +133,13 @@ interface Relationship {
   to: string;            // target node id
   label?: string;
 }
+
+interface Group {
+  id: string;
+  members: string[];     // node ids, possibly from different parents; always ≥ 2
+  label?: string;
+  color?: string;        // palette name (NODE_COLORS)
+}
 ```
 
 - The **root** node holds the map title.
@@ -139,6 +147,12 @@ interface Relationship {
   links. They live in the JSON but are deliberately excluded from markdown *copy/paste*,
   which stays tree-only. (MCP reads are different: `read_map_markdown`/`get_subtree` append
   a `## Relationships` section so connected ideas are visible to AI clients.)
+- **Groups** are dashed boundaries around sets of nodes (possibly from different parents),
+  rendered as a rounded convex hull of the member rects (`src/canvas/groupHull.ts`) behind
+  the tree. They enclose exactly the listed members — not their subtrees; members hidden by
+  collapse or hoist simply drop out of the hull. Deleting nodes prunes members, and a group
+  shrunk below 2 dissolves (in `removeSubtree`, so MCP and browser converge). MCP reads
+  append a `## Groups` section like relationships.
 - Schema migrations live in [`src/model/migrate.ts`](src/model/migrate.ts); bump
   `schemaVersion` and add a migration when the shape changes.
 

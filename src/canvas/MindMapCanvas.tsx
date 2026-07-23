@@ -8,9 +8,12 @@ import { searchMatches, viewScope } from '../model/search';
 import type { Position } from '../model/types';
 import { addFloatingTree, detachNode, moveNode, moveTree } from '../state/commands';
 import { runCommandById } from '../state/registry';
-import { useStore } from '../state/store';
+import { canvasMode, useStore } from '../state/store';
 import { distanceToNearestRect, dropTargetsEqual, resolveDropTarget, type DropTarget } from './dnd';
 import { EdgeView } from './EdgeView';
+import { GroupLabelEditor } from './GroupLabelEditor';
+import { groupHull } from './groupHull';
+import { GroupView } from './GroupView';
 import { getLastLayout, setCanvasHost, setLastLayout } from './layoutCache';
 import { NodeEditor } from './NodeEditor';
 import { NodeView } from './NodeView';
@@ -47,6 +50,9 @@ export function MindMapCanvas() {
   const linking = useStore((s) => s.linking);
   const selectedRelId = useStore((s) => s.selectedRelId);
   const editingRel = useStore((s) => s.editingRel);
+  const grouping = useStore((s) => s.grouping);
+  const selectedGroupId = useStore((s) => s.selectedGroupId);
+  const editingGroup = useStore((s) => s.editingGroup);
   const viewport = useStore((s) => s.viewport);
   const hoistId = useStore((s) => s.hoistId);
   const searchOpen = useStore((s) => s.searchOpen);
@@ -253,10 +259,10 @@ export function MindMapCanvas() {
       return;
     }
     const st = useStore.getState();
-    if (st.editing || st.editingRel) return; // an editor owns the keyboard
+    if (st.editing || st.editingRel || st.editingGroup) return; // an editor owns the keyboard
     const combo = comboFromEvent(e);
-    // Drawing an arrow or with one selected swaps in a mode-specific keymap.
-    const context = st.linking ? 'link' : st.selectedRelId ? 'relsel' : 'nav';
+    // Drawing an arrow/group or with one selected swaps in a mode-specific keymap.
+    const context = canvasMode(st) ?? 'nav';
     const commandId = resolveCommand(keymapIndex, context, combo);
     if (commandId) {
       e.preventDefault();
@@ -272,8 +278,9 @@ export function MindMapCanvas() {
 
   const panState = useRef<{ startX: number; startY: number; vpX: number; vpY: number } | null>(null);
   const onMouseDown = (e: React.MouseEvent) => {
-    // Only drag-pan when the press starts on empty canvas (nodes/arrows stopPropagation).
+    // Only drag-pan when the press starts on empty canvas (nodes/arrows/groups stopPropagation).
     useStore.getState().selectRelationship(null); // clicking blank canvas deselects an arrow
+    useStore.getState().selectGroup(null); // …and a group
     panState.current = { startX: e.clientX, startY: e.clientY, vpX: viewport.x, vpY: viewport.y };
     const onMove = (ev: MouseEvent) => {
       const d = panState.current;
@@ -328,6 +335,17 @@ export function MindMapCanvas() {
   const editTo = editingRelData ? layout.rects.get(editingRelData.to) : undefined;
   const editingRelMid = editFrom && editTo ? relationshipGeometry(editFrom, editTo).mid : undefined;
 
+  // Visible member rects per group (hidden members drop out of the hull).
+  const memberRects = (members: string[]) =>
+    members.flatMap((m) => {
+      const r = layout.rects.get(m);
+      return r ? [r] : [];
+    });
+  // Where the group label editor floats, if open: the hull's topmost point.
+  const editingGroupData = editingGroup ? doc.groups.find((g) => g.id === editingGroup.groupId) : undefined;
+  const editingGroupAnchor = editingGroupData ? groupHull(memberRects(editingGroupData.members))?.anchor : undefined;
+  const groupingMembers = grouping ? new Set(grouping.members) : null;
+
   return (
     <div
       className={`canvas-host${drag ? ' dragging' : ''}`}
@@ -347,6 +365,29 @@ export function MindMapCanvas() {
           </marker>
         </defs>
         <g transform={`translate(${viewport.x},${viewport.y}) scale(${viewport.zoom})`}>
+          <g className="groups">
+            {doc.groups.map((group) => {
+              // While re-editing this group's members, the pending hull replaces it.
+              if (grouping?.editingGroupId === group.id) return null;
+              const rects = memberRects(group.members);
+              if (rects.length === 0) return null;
+              return (
+                <GroupView
+                  key={group.id}
+                  rects={rects}
+                  label={group.label}
+                  color={group.color}
+                  selected={group.id === selectedGroupId}
+                  onSelect={() => {
+                    useStore.getState().selectGroup(group.id);
+                    hostRef.current?.focus();
+                  }}
+                  onEdit={() => useStore.getState().startEditGroup(group.id)}
+                />
+              );
+            })}
+            {grouping && <GroupView pending rects={memberRects(grouping.members)} />}
+          </g>
           {layout.axes.map((axis, i) => (
             <line
               key={i}
@@ -384,6 +425,7 @@ export function MindMapCanvas() {
                 isRoot={id === viewDoc.rootId || floatingRoots.has(id)}
                 dimmed={(draggedSubtree?.has(id) ?? false) || (matchSet !== null && !matchSet.has(id))}
                 linkSource={id === linkSourceId}
+                groupMember={groupingMembers?.has(id) ?? false}
                 onPressStart={(e) => handleNodePress(id, e)}
                 onEdit={() => {
                   useStore.getState().select(id);
@@ -461,6 +503,14 @@ export function MindMapCanvas() {
           key={editingRel.relId}
           relId={editingRel.relId}
           mid={editingRelMid}
+          onDone={() => hostRef.current?.focus()}
+        />
+      )}
+      {editingGroup && editingGroupAnchor && (
+        <GroupLabelEditor
+          key={editingGroup.groupId}
+          groupId={editingGroup.groupId}
+          anchor={editingGroupAnchor}
           onDone={() => hostRef.current?.focus()}
         />
       )}

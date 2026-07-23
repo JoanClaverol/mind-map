@@ -1,4 +1,4 @@
-export type Context = 'nav' | 'edit' | 'gallery' | 'link' | 'relsel';
+export type Context = 'nav' | 'edit' | 'gallery' | 'link' | 'relsel' | 'group' | 'groupsel';
 
 export interface Binding {
   /** Normalized combo: "[mod+][shift+][alt+]key", e.g. "tab", "mod+shift+z", "h". */
@@ -51,6 +51,27 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'delete', context: 'relsel', command: 'link.delete' },
   { combo: 'backspace', context: 'relsel', command: 'link.delete' },
   { combo: 'escape', context: 'relsel', command: 'link.deselect' },
+  // groups (shift+g = Group; shadows type-to-edit for capital G, like A/H/J/K/L)
+  { combo: 'shift+g', context: 'nav', command: 'group.start' },
+  // while picking group members: hjkl/arrows move the cursor, space toggles, enter confirms
+  { combo: 'h', context: 'group', command: 'nav.left' },
+  { combo: 'arrowleft', context: 'group', command: 'nav.left' },
+  { combo: 'l', context: 'group', command: 'nav.right' },
+  { combo: 'arrowright', context: 'group', command: 'nav.right' },
+  { combo: 'j', context: 'group', command: 'nav.down' },
+  { combo: 'arrowdown', context: 'group', command: 'nav.down' },
+  { combo: 'k', context: 'group', command: 'nav.up' },
+  { combo: 'arrowup', context: 'group', command: 'nav.up' },
+  { combo: 'space', context: 'group', command: 'group.toggleMember' },
+  { combo: 'enter', context: 'group', command: 'group.confirm' },
+  { combo: 'escape', context: 'group', command: 'group.cancel' },
+  // when a group is selected: enter edits its label, c recolors, shift+g edits members
+  { combo: 'enter', context: 'groupsel', command: 'group.editLabel' },
+  { combo: 'c', context: 'groupsel', command: 'group.cycleColor' },
+  { combo: 'shift+g', context: 'groupsel', command: 'group.start' },
+  { combo: 'delete', context: 'groupsel', command: 'group.delete' },
+  { combo: 'backspace', context: 'groupsel', command: 'group.delete' },
+  { combo: 'escape', context: 'groupsel', command: 'group.deselect' },
   // history
   { combo: 'mod+z', context: 'nav', command: 'history.undo' },
   { combo: 'mod+shift+z', context: 'nav', command: 'history.redo' },

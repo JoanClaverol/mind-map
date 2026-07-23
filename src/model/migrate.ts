@@ -11,6 +11,7 @@ import {
   type BranchStyle,
   type FileNode,
   type FloatingTree,
+  type Group,
   type LayoutStyle,
   type MapFile,
   type NodeColor,
@@ -140,6 +141,31 @@ export function migrateMapFile(raw: unknown): MapFile {
     if (map.floating.length === 0) delete map.floating;
   } else if (map.floating !== undefined) {
     delete map.floating;
+  }
+  // Tolerate hand-edited groups: keep well-formed entries whose members exist,
+  // dedupe members, drop groups left with fewer than 2 (matching normalize).
+  if (Array.isArray(map.groups)) {
+    const allIds = new Set<string>();
+    collectIds(map.root, allIds);
+    for (const f of map.floating ?? []) collectIds(f.root, allIds);
+    const seenGroupIds = new Set<string>();
+    map.groups = map.groups.flatMap((g) => {
+      if (!g || typeof g !== 'object' || typeof g.id !== 'string' || !Array.isArray(g.members)) return [];
+      if (seenGroupIds.has(g.id)) return [];
+      seenGroupIds.add(g.id);
+      const members = [
+        ...new Set(g.members.filter((m): m is string => typeof m === 'string' && allIds.has(m))),
+      ];
+      if (members.length < 2) return [];
+      const out: Group = { id: g.id, members };
+      const label = typeof g.label === 'string' ? g.label.trim() : '';
+      if (label) out.label = label;
+      if (typeof g.color === 'string' && NODE_COLORS.includes(g.color as NodeColor)) out.color = g.color;
+      return [out];
+    });
+    if (map.groups.length === 0) delete map.groups;
+  } else if (map.groups !== undefined) {
+    delete map.groups;
   }
   sanitizeNodeMeta(map.root);
   for (const f of map.floating ?? []) sanitizeNodeMeta(f.root);

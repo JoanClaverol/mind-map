@@ -49,6 +49,15 @@ interface StoreState {
   selectedRelId: string | null;
   /** The arrow whose label is being edited. */
   editingRel: { relId: string } | null;
+  /**
+   * Group mode: picking boundary members with the cursor (Space toggles the
+   * selected node). editingGroupId set = re-editing an existing group's members.
+   */
+  grouping: { members: string[]; editingGroupId: string | null } | null;
+  /** An existing group is selected (for delete / edit-label / recolor). Cleared whenever a node is selected. */
+  selectedGroupId: string | null;
+  /** The group whose label is being edited. */
+  editingGroup: { groupId: string } | null;
   viewport: Viewport;
   /** Increments on every persistable change; autosave uses it to detect staleness. */
   rev: number;
@@ -102,6 +111,16 @@ interface StoreState {
   selectRelationship(id: string | null): void;
   startEditRel(relId: string): void;
   setEditingRel(v: { relId: string } | null): void;
+  /** Begin picking group members, seeded with the selected node. */
+  startGrouping(): void;
+  /** Re-open group mode on an existing group to edit its members; seedId = where the cursor starts. */
+  startEditGroupMembers(groupId: string, seedId?: string): void;
+  /** Toggle the selected node in the in-progress member list. */
+  toggleGroupingMember(): void;
+  cancelGrouping(): void;
+  selectGroup(id: string | null): void;
+  startEditGroup(groupId: string): void;
+  setEditingGroup(v: { groupId: string } | null): void;
   setViewport(viewport: Viewport): void;
   /** Fit the view once the next layout has been computed. */
   requestFit(): void;
@@ -145,6 +164,20 @@ function clampSelection(doc: Doc, id: string | null): string {
   return id && doc.nodes[id] ? id : doc.rootId;
 }
 
+/**
+ * The active canvas interaction mode — the ONE precedence ladder shared by the
+ * keymap context (MindMapCanvas) and the status-bar hints, so they never drift.
+ */
+export function canvasMode(
+  s: Pick<StoreState, 'linking' | 'grouping' | 'selectedRelId' | 'selectedGroupId'>,
+): 'link' | 'group' | 'relsel' | 'groupsel' | null {
+  if (s.linking) return 'link';
+  if (s.grouping) return 'group';
+  if (s.selectedRelId) return 'relsel';
+  if (s.selectedGroupId) return 'groupsel';
+  return null;
+}
+
 export const useStore = create<StoreState>((set, get) => ({
   mapId: null,
   title: '',
@@ -156,6 +189,9 @@ export const useStore = create<StoreState>((set, get) => ({
   linking: null,
   selectedRelId: null,
   editingRel: null,
+  grouping: null,
+  selectedGroupId: null,
+  editingGroup: null,
   viewport: { x: 60, y: 60, zoom: 1 },
   rev: 0,
   savedRev: 0,
@@ -179,7 +215,7 @@ export const useStore = create<StoreState>((set, get) => ({
   filterQuery: null,
 
   loadMap(map) {
-    const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? []);
+    const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
     set({
       mapId: map.id,
       title: map.title,
@@ -191,6 +227,9 @@ export const useStore = create<StoreState>((set, get) => ({
       linking: null,
       selectedRelId: null,
       editingRel: null,
+      grouping: null,
+      selectedGroupId: null,
+      editingGroup: null,
       needsFit: !map.viewport,
       viewport: map.viewport ?? { x: 60, y: 60, zoom: 1 },
       rev: 0,
@@ -218,6 +257,9 @@ export const useStore = create<StoreState>((set, get) => ({
       linking: null,
       selectedRelId: null,
       editingRel: null,
+      grouping: null,
+      selectedGroupId: null,
+      editingGroup: null,
       rev: 0,
       savedRev: 0,
       saveState: 'idle',
@@ -295,13 +337,13 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   select(id) {
-    set({ selectedId: id, selectedRelId: null });
+    set({ selectedId: id, selectedRelId: null, selectedGroupId: null });
   },
 
   startLinking() {
     const { doc, selectedId } = get();
     if (!doc || !selectedId || !doc.nodes[selectedId]) return;
-    set({ linking: { sourceId: selectedId }, selectedRelId: null });
+    set({ linking: { sourceId: selectedId }, selectedRelId: null, selectedGroupId: null });
   },
 
   cancelLinking() {
@@ -311,7 +353,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   selectRelationship(id) {
-    set({ selectedRelId: id });
+    set(id === null ? { selectedRelId: null } : { selectedRelId: id, selectedGroupId: null });
   },
 
   startEditRel(relId) {
@@ -322,6 +364,51 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setEditingRel(v) {
     set({ editingRel: v });
+  },
+
+  startGrouping() {
+    const { doc, selectedId } = get();
+    if (!doc || !selectedId || !doc.nodes[selectedId]) return;
+    set({ grouping: { members: [selectedId], editingGroupId: null }, selectedRelId: null, selectedGroupId: null });
+  },
+
+  startEditGroupMembers(groupId, seedId) {
+    const { doc } = get();
+    const group = doc?.groups.find((g) => g.id === groupId);
+    if (!doc || !group) return;
+    set({
+      grouping: { members: [...group.members], editingGroupId: groupId },
+      selectedId: seedId && group.members.includes(seedId) ? seedId : group.members[0],
+      selectedRelId: null,
+      selectedGroupId: null,
+    });
+  },
+
+  toggleGroupingMember() {
+    const { doc, grouping, selectedId } = get();
+    if (!doc || !grouping || !selectedId || !doc.nodes[selectedId]) return;
+    const members = grouping.members.includes(selectedId)
+      ? grouping.members.filter((m) => m !== selectedId)
+      : [...grouping.members, selectedId];
+    set({ grouping: { ...grouping, members } });
+  },
+
+  cancelGrouping() {
+    set({ grouping: null });
+  },
+
+  selectGroup(id) {
+    set(id === null ? { selectedGroupId: null } : { selectedGroupId: id, selectedRelId: null });
+  },
+
+  startEditGroup(groupId) {
+    const { doc } = get();
+    if (!doc || !doc.groups.some((g) => g.id === groupId)) return;
+    set({ editingGroup: { groupId }, selectedGroupId: groupId, selectedRelId: null });
+  },
+
+  setEditingGroup(v) {
+    set({ editingGroup: v });
   },
 
   startEdit(mode, seed) {

@@ -7,7 +7,7 @@ import { splitBalanced } from '../layout/layout';
 import { branchStyleOf, buildParentMap, effectiveStyleAt, newId } from '../model/doc';
 import { branchToMarkdown, markdownToBranches } from '../model/markdown';
 import { viewScope } from '../model/search';
-import { BRANCH_STYLES, LAYOUT_LABELS, LAYOUT_STYLES, type BranchStyle, type MapMeta } from '../model/types';
+import { BRANCH_STYLES, LAYOUT_LABELS, LAYOUT_STYLES, NODE_COLORS, type BranchStyle, type MapMeta, type NodeColor } from '../model/types';
 import { getCanvasHost, getLastLayout } from '../canvas/layoutCache';
 import { fitToContent, zoomAt } from '../canvas/viewport';
 import * as cmd from './commands';
@@ -437,6 +437,95 @@ export const registry: Record<string, AppCommand> = {
   'link.deselect': {
     description: 'Deselect the arrow',
     run: () => state().selectRelationship(null),
+  },
+  'group.start': {
+    description: 'Group nodes in a boundary — Space adds/removes the highlighted node, Enter confirms',
+    run: () => {
+      const s = state();
+      // With a group selected the same key re-opens it for member editing.
+      if (s.selectedGroupId) {
+        // Seed the cursor on a member that is actually on screen — the first
+        // member may be hidden inside a collapsed branch or outside a hoist.
+        const group = s.doc?.groups.find((g) => g.id === s.selectedGroupId);
+        const seed = group?.members.find((m) => getLastLayout()?.rects.has(m));
+        s.startEditGroupMembers(s.selectedGroupId, seed);
+      } else {
+        s.startGrouping();
+      }
+    },
+  },
+  'group.toggleMember': {
+    description: 'Add or remove the highlighted node from the group being drawn',
+    run: () => state().toggleGroupingMember(),
+  },
+  'group.confirm': {
+    description: 'Create the boundary around the picked nodes (and edit its label)',
+    run: () => {
+      const s = state();
+      if (!s.grouping || !s.doc) return;
+      const { members: picked, editingGroupId } = s.grouping;
+      // A picked node may have vanished under us (MCP delete, undo).
+      const members = picked.filter((m) => s.doc!.nodes[m]);
+      if (members.length < 2) {
+        s.addToast('info', 'A group needs at least 2 nodes — Space adds the highlighted one');
+        return;
+      }
+      const duplicate = s.doc.groups.some(
+        (g) => g.id !== editingGroupId && g.members.length === members.length && members.every((m) => g.members.includes(m)),
+      );
+      if (duplicate) {
+        // Stay in the mode so the picked set can be adjusted.
+        s.addToast('info', 'A group with exactly these nodes already exists');
+        return;
+      }
+      if (editingGroupId) {
+        s.runCommand('setGroupMembers', (d) => cmd.setGroupMembers(d, editingGroupId, members));
+        s.cancelGrouping();
+        state().selectGroup(editingGroupId);
+        return;
+      }
+      const id = newId();
+      s.runCommand('addGroup', (d) => cmd.addGroup(d, members, id));
+      s.cancelGrouping();
+      state().startEditGroup(id);
+    },
+  },
+  'group.cancel': {
+    description: 'Cancel drawing the group',
+    run: () => state().cancelGrouping(),
+  },
+  'group.editLabel': {
+    description: 'Edit the selected group’s label',
+    run: () => {
+      const s = state();
+      if (s.selectedGroupId) s.startEditGroup(s.selectedGroupId);
+    },
+  },
+  'group.cycleColor': {
+    description: 'Cycle the selected group’s color',
+    run: () => {
+      const s = state();
+      const groupId = s.selectedGroupId;
+      const group = s.doc?.groups.find((g) => g.id === groupId);
+      if (!groupId || !group) return;
+      const cur = NODE_COLORS.indexOf(group.color as NodeColor);
+      const next: NodeColor | null = cur === NODE_COLORS.length - 1 ? null : NODE_COLORS[cur + 1];
+      s.runCommand('setGroupColor', (d) => cmd.setGroupColor(d, groupId, next));
+    },
+  },
+  'group.delete': {
+    description: 'Delete the selected group (the nodes stay)',
+    run: () => {
+      const s = state();
+      const groupId = s.selectedGroupId;
+      if (!groupId) return;
+      s.runCommand('deleteGroup', (d) => cmd.deleteGroup(d, groupId));
+      state().selectGroup(null);
+    },
+  },
+  'group.deselect': {
+    description: 'Deselect the group',
+    run: () => state().selectGroup(null),
   },
   'clipboard.copyBranch': {
     description: 'Copy the selected branch as a markdown outline',

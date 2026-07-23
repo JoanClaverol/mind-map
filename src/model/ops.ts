@@ -10,6 +10,7 @@ import {
   type Doc,
   type DocNode,
   type FileNode,
+  type Group,
   type NodeColor,
   type Position,
 } from './types';
@@ -32,6 +33,17 @@ export type MapOp =
   | { type: 'add_relationship'; relId: string; fromId: string; toId: string; label?: string }
   | { type: 'edit_relationship'; relId: string; label: string }
   | { type: 'delete_relationship'; relId: string }
+  | { type: 'add_group'; groupId: string; members: string[]; label?: string; color?: NodeColor }
+  | {
+      // Partial group update: undefined = leave untouched; members replaces the
+      // whole list; label ''/null clears; color null clears.
+      type: 'edit_group';
+      groupId: string;
+      members?: string[];
+      label?: string | null;
+      color?: NodeColor | null;
+    }
+  | { type: 'delete_group'; groupId: string }
   | { type: 'create_tree'; root: FileNode; pos: Position } // root carries FINAL ids
   | { type: 'move_tree'; rootId: string; pos: Position }
   | { type: 'detach_node'; nodeId: string; pos: Position }
@@ -82,6 +94,12 @@ export function applyDocOp(doc: Doc, op: MapOp): OpResult {
       return editRelationship(doc, op.relId, op.label);
     case 'delete_relationship':
       return deleteRelationship(doc, op.relId);
+    case 'add_group':
+      return addGroup(doc, op.groupId, op.members, op.label, op.color);
+    case 'edit_group':
+      return editGroup(doc, op);
+    case 'delete_group':
+      return deleteGroup(doc, op.groupId);
     case 'create_tree':
       return createTree(doc, op.root, op.pos);
     case 'move_tree':
@@ -220,6 +238,14 @@ function removeSubtree(doc: Doc, rootId: string): void {
   // Drop arrows touching any deleted node; undo restores them with the nodes.
   if (doc.relationships.some((r) => removed.has(r.from) || removed.has(r.to))) {
     doc.relationships = doc.relationships.filter((r) => !removed.has(r.from) && !removed.has(r.to));
+  }
+  // Prune deleted members from groups; a group shrunk below 2 members dissolves.
+  // Undo restores members and groups together with the nodes (Immer patches).
+  for (const g of doc.groups) {
+    if (g.members.some((m) => removed.has(m))) g.members = g.members.filter((m) => !removed.has(m));
+  }
+  for (let i = doc.groups.length - 1; i >= 0; i--) {
+    if (doc.groups[i].members.length < 2) doc.groups.splice(i, 1);
   }
 }
 
@@ -363,5 +389,83 @@ function deleteRelationship(doc: Doc, relId: string): OpResult {
   const idx = doc.relationships.findIndex((r) => r.id === relId);
   if (idx === -1) return { ok: false, reason: `relationship ${relId} not found` };
   doc.relationships.splice(idx, 1);
+  return { ok: true };
+}
+
+/** Validate a group member list: distinct, existing, ≥ 2. Returns members or an error string. */
+function checkMembers(doc: Doc, members: string[]): { members: string[] } | { error: string } {
+  const distinct = [...new Set(members)];
+  const missing = distinct.find((m) => !doc.nodes[m]);
+  if (missing) return { error: `member node ${missing} not found` };
+  if (distinct.length < 2) return { error: 'a group needs at least 2 distinct member nodes' };
+  return { members: distinct };
+}
+
+/**
+ * Add a boundary around a set of nodes. The id is supplied so the producer can
+ * immediately target the new group (the server returns it; the browser opens
+ * its label editor). Members may span different parents; overlap between
+ * groups is allowed, an identical member set is not.
+ */
+function addGroup(doc: Doc, groupId: string, members: string[], label?: string, color?: NodeColor): OpResult {
+  if (doc.groups.some((g) => g.id === groupId)) {
+    return { ok: false, reason: `group id ${groupId} already exists` };
+  }
+  const checked = checkMembers(doc, members);
+  if ('error' in checked) return { ok: false, reason: checked.error };
+  const sameSet = (g: Group) =>
+    g.members.length === checked.members.length && checked.members.every((m) => g.members.includes(m));
+  if (doc.groups.some(sameSet)) {
+    return { ok: false, reason: 'a group with exactly these members already exists' };
+  }
+  if (color != null && !NODE_COLORS.includes(color)) {
+    return { ok: false, reason: `unknown color "${color}" — valid colors: ${NODE_COLORS.join(', ')}` };
+  }
+  const trimmed = label?.trim();
+  const group: Group = { id: groupId, members: checked.members };
+  if (trimmed) group.label = trimmed;
+  if (color) group.color = color;
+  doc.groups.push(group);
+  return { ok: true };
+}
+
+function editGroup(doc: Doc, op: Extract<MapOp, { type: 'edit_group' }>): OpResult {
+  const group = doc.groups.find((g) => g.id === op.groupId);
+  if (!group) return { ok: false, reason: `group ${op.groupId} not found` };
+  if (op.members === undefined && op.label === undefined && op.color === undefined) {
+    return { ok: false, reason: 'edit_group requires at least one of members/label/color' };
+  }
+  // Validate everything before mutating anything.
+  let members: string[] | undefined;
+  if (op.members !== undefined) {
+    const checked = checkMembers(doc, op.members);
+    if ('error' in checked) return { ok: false, reason: checked.error };
+    members = checked.members;
+    const sameSet = (g: Group) =>
+      g.id !== op.groupId && g.members.length === members!.length && members!.every((m) => g.members.includes(m));
+    if (doc.groups.some(sameSet)) {
+      return { ok: false, reason: 'a group with exactly these members already exists' };
+    }
+  }
+  if (op.color != null && !NODE_COLORS.includes(op.color)) {
+    return { ok: false, reason: `unknown color "${op.color}" — valid colors: ${NODE_COLORS.join(', ')}` };
+  }
+  if (members !== undefined) group.members = members;
+  if (op.label !== undefined) {
+    const trimmed = op.label?.trim();
+    if (trimmed) group.label = trimmed;
+    else delete group.label;
+  }
+  if (op.color !== undefined) {
+    if (op.color === null) delete group.color;
+    else group.color = op.color;
+  }
+  return { ok: true };
+}
+
+function deleteGroup(doc: Doc, groupId: string): OpResult {
+  const idx = doc.groups.findIndex((g) => g.id === groupId);
+  if (idx === -1) return { ok: false, reason: `group ${groupId} not found` };
+  doc.groups.splice(idx, 1);
   return { ok: true };
 }

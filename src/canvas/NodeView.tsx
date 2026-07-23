@@ -24,12 +24,14 @@ interface NodeViewProps {
   dimmed: boolean;
   /** The source node while an arrow is being drawn from it. */
   linkSource: boolean;
+  /** Picked as a member while a group boundary is being drawn. */
+  groupMember: boolean;
   onPressStart(e: React.MouseEvent): void;
   onEdit(): void;
   onToggleCollapse(): void;
 }
 
-export function NodeView({ node, rect, dir, selected, isRoot, dimmed, linkSource, onPressStart, onEdit, onToggleCollapse }: NodeViewProps) {
+export function NodeView({ node, rect, dir, selected, isRoot, dimmed, linkSource, groupMember, onPressStart, onEdit, onToggleCollapse }: NodeViewProps) {
   const badgeText = `+${node.children.length}`;
   const badgeWidth = 14 + 7 * badgeText.length;
   const badgePos =
@@ -55,7 +57,7 @@ export function NodeView({ node, rect, dir, selected, isRoot, dimmed, linkSource
         width={rect.w}
         height={rect.h}
         rx={8}
-        className={`node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${linkSource ? ' link-source' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`}
+        className={`node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${linkSource ? ' link-source' : ''}${groupMember ? ' group-member' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`}
       />
       <foreignObject width={rect.w} height={rect.h}>
         <div

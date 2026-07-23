@@ -246,6 +246,61 @@ body,
   stroke-dasharray: 4 3;
 }
 
+/* Group boundaries: dashed hulls behind the tree; faint fill so the cluster reads as one. */
+.group-hull {
+  fill: var(--node-border);
+  fill-opacity: 0.08;
+  stroke: var(--node-border);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  cursor: pointer;
+}
+
+/* Same zen accents as the node tints, on the boundary stroke + wash. */
+.group-hull.color-sage { stroke: #8fa583; fill: #5d9272; fill-opacity: 0.07; }
+.group-hull.color-mist { stroke: #8d9aa8; fill: #5e81ac; fill-opacity: 0.07; }
+.group-hull.color-clay { stroke: #c09a74; fill: #c08552; fill-opacity: 0.07; }
+.group-hull.color-sand { stroke: #c2ae74; fill: #c9a227; fill-opacity: 0.07; }
+.group-hull.color-rose { stroke: #c98d7d; fill: #d3705f; fill-opacity: 0.07; }
+
+.group-hull.selected {
+  stroke: var(--node-selected);
+  stroke-width: 2;
+}
+
+/* Live preview while picking members — non-interactive, reads as tentative. */
+.group-hull.pending {
+  stroke: var(--node-selected);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.group-label {
+  cursor: pointer;
+}
+
+.group-label rect {
+  fill: var(--bg);
+  stroke: var(--node-border);
+}
+
+.group-label.selected rect {
+  stroke: var(--node-selected);
+}
+
+.group-label text {
+  font-size: 11px;
+  fill: var(--text);
+  user-select: none;
+}
+
+/* Picked as a group member while the boundary is being drawn. */
+.node-rect.group-member {
+  stroke: var(--node-selected);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+}
+
 .rel-label-editor {
   position: absolute;
   font-family: inherit;

@@ -176,6 +176,7 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
 | Annotate | `set_node_meta` — color, icon, hidden note, tags; renders quietly on the canvas |
 | Floating trees | `create_tree`, `detach_node` — detached trees on the canvas; `move_node` on a tree root attaches it |
 | Connect ideas | `add_relationship`, `edit_relationship`, `delete_relationship` — labeled arrows between any two nodes, across trees |
+| Group ideas | `add_group`, `edit_group`, `delete_group` — dashed boundaries around sets of nodes, even from different parents |
 | Batch | `apply_ops` — up to 50 edits, atomic on disk, **one undo step** for you |
 | Create | `create_map_from_outline` |
 
@@ -189,6 +190,8 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
 - **Floating trees** — several root trees on one canvas (XMind floating topics): brainstorm
   clusters side by side, connect them with arrows, attach/detach branches by dragging.
 - **Relationship arrows** — free directional links between any two nodes, across trees.
+- **Groups** (`⇧G`) — a dashed boundary hugging any set of nodes, even from different
+  parents: pick members with `Space`, confirm with `Enter`, then label and color it.
 - **Search & filter** (`⌘F`) — find nodes by text and `#tags` (matches inside collapsed
   branches), jump with Enter, or pin the query as a filter that dims everything else.
 - **Hoist** (`⌘.`) — any branch becomes the temporary root, Workflowy-style: navigate,
@@ -225,6 +228,7 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `⌘F` | **Search nodes** — text and `#tags`; non-matches dim as you type, `↑↓` cycle hits, `Enter` jumps (expanding collapsed branches), `⇧Enter` pins the query as a canvas filter |
 | `⌘.` | **Hoist** the selected branch — it becomes the temporary root; `⌘.` again on the hoisted root goes up one level |
 | `⇧A` | Draw an **arrow** (relationship) from the selected node — move (`hjkl`/click) to a target, `Enter` to connect, `Esc` to cancel; the label editor opens on connect |
+| `⇧G` | **Group** nodes in a dashed boundary — starts from the selected node; move (`hjkl`) and `Space` to add/remove members (any parents), `Enter` to create (the label editor opens), `Esc` to cancel. With a group selected, `⇧G` re-opens member picking |
 | `⌘C` / `⌘X` / `⌘V` | Copy / cut branch as markdown outline · paste outline as subtree |
 | `⌘Z` / `⌘⇧Z` | Undo / redo |
 | `⌘=` / `⌘-` / `⌘0` | Zoom in / out / fit |
@@ -239,11 +243,14 @@ shows where), and dropping it on **empty canvas** (beyond ~48px of any node — 
 shows the spot) **detaches it into a floating tree**. Drag a floating tree's root onto a node
 to attach the whole tree, or to empty canvas to reposition it. `Esc` cancels a drag.
 **Click an arrow** (or its label) to select it — `Enter` edits its label, `Delete`/`Backspace`
-removes it, `Esc` deselects.
+removes it, `Esc` deselects. **Click a group boundary** to select it — `Enter` edits its
+label, `C` cycles its color, `⇧G` re-picks its members, `Delete` removes it (nodes stay),
+`Esc` deselects.
 
-> Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧I` opens the inspector, `⇧N` adds a floating
-> tree, and `⇧S`/`⇧B` switch structure, typing a *capital* A/B/H/I/J/K/L/N/S won't trigger
-> type-to-edit — press `Space` to edit instead, or unbind them via `localStorage.keymap`.
+> Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧G` groups, `⇧I` opens the inspector, `⇧N`
+> adds a floating tree, and `⇧S`/`⇧B` switch structure, typing a *capital* A/B/G/H/I/J/K/L/N/S
+> won't trigger type-to-edit — press `Space` to edit instead, or unbind them via
+> `localStorage.keymap`.
 
 ## Gallery
 

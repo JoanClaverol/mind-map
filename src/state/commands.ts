@@ -181,3 +181,34 @@ export function deleteRelationship(draft: Draft<Doc>, relId: string): CommandRes
   applyDocOp(draft, { type: 'delete_relationship', relId });
   return {};
 }
+
+/**
+ * Add a boundary around member nodes. The id is supplied so the caller can
+ * immediately target the new group (e.g. select it, open its label editor).
+ * No-ops on < 2 distinct members, missing nodes, or a duplicate member set.
+ */
+export function addGroup(draft: Draft<Doc>, members: string[], id: string): CommandResult {
+  applyDocOp(draft, { type: 'add_group', groupId: id, members });
+  return {};
+}
+
+/** Replace a group's member list (group mode re-entered on an existing group). */
+export function setGroupMembers(draft: Draft<Doc>, groupId: string, members: string[]): CommandResult {
+  applyDocOp(draft, { type: 'edit_group', groupId, members });
+  return {};
+}
+
+export function setGroupLabel(draft: Draft<Doc>, groupId: string, label: string): CommandResult {
+  applyDocOp(draft, { type: 'edit_group', groupId, label });
+  return {};
+}
+
+export function setGroupColor(draft: Draft<Doc>, groupId: string, color: NodeColor | null): CommandResult {
+  applyDocOp(draft, { type: 'edit_group', groupId, color });
+  return {};
+}
+
+export function deleteGroup(draft: Draft<Doc>, groupId: string): CommandResult {
+  applyDocOp(draft, { type: 'delete_group', groupId });
+  return {};
+}

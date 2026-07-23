@@ -73,6 +73,43 @@ describe('migrateMapFile', () => {
     expect(migrateMapFile({ ...base, relationships: 'x' }).relationships).toBeUndefined();
     expect(migrateMapFile(base).relationships).toBeUndefined();
   });
+
+  it('salvages hand-edited groups: existing members only, deduped, ≥ 2, valid color', () => {
+    const base = {
+      schemaVersion: SCHEMA_VERSION,
+      id: 'abc123',
+      title: 't',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      root: {
+        id: 'r',
+        text: 't',
+        children: [
+          { id: 'a', text: 'a', children: [] },
+          { id: 'b', text: 'b', children: [] },
+        ],
+      },
+      floating: [{ pos: { x: 0, y: 0 }, root: { id: 'f', text: 'f', children: [] } }],
+    };
+    const out = migrateMapFile({
+      ...base,
+      groups: [
+        { id: 'g1', members: ['a', 'b', 'a', 'ghost', 7], label: '  theme  ', color: 'sage' }, // salvaged
+        { id: 'g1', members: ['a', 'f'] }, // duplicate id — dropped
+        { id: 'g2', members: ['a', 'f'], label: '', color: 'crimson' }, // floating member ok; junk label/color dropped
+        { id: 'g3', members: ['a', 'ghost'] }, // shrinks below 2 — dropped
+        { id: 'g4' }, // malformed
+        'nope',
+      ],
+    });
+    expect(out.groups).toEqual([
+      { id: 'g1', members: ['a', 'b'], label: 'theme', color: 'sage' },
+      { id: 'g2', members: ['a', 'f'] },
+    ]);
+    expect(migrateMapFile({ ...base, groups: 'x' }).groups).toBeUndefined();
+    expect(migrateMapFile({ ...base, groups: [{ id: 'g', members: ['a', 'ghost'] }] }).groups).toBeUndefined();
+    expect(migrateMapFile(base).groups).toBeUndefined();
+  });
 });
 
 describe('migrateMapFile v2 (floating trees + metadata)', () => {
