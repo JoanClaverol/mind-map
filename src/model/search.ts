@@ -1,3 +1,4 @@
+import { effectiveStyleAt } from './doc';
 import type { Doc } from './types';
 
 /**
@@ -39,12 +40,13 @@ export function nodeMatches(node: { text: string; tags?: string[] }, q: Query): 
 
 /**
  * The doc as the canvas currently shows it: hoisting swaps the root to the
- * hoisted node and hides floating trees. Pure view restriction — same nodes
- * object, so commands and ids stay valid.
+ * hoisted node, hides floating trees, and renders in the structure the node's
+ * branch actually uses (its nearest style override, else the map layout).
+ * Pure view restriction — same nodes object, so commands and ids stay valid.
  */
 export function viewScope(doc: Doc, hoistId: string | null): Doc {
   if (!hoistId || hoistId === doc.rootId || !doc.nodes[hoistId]) return doc;
-  return { ...doc, rootId: hoistId, floating: [] };
+  return { ...doc, rootId: hoistId, floating: [], layout: effectiveStyleAt(doc, hoistId) };
 }
 
 /**

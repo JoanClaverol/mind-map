@@ -198,15 +198,16 @@ describe('layoutTree timeline', () => {
   });
 
   it('centers every phase on the axis, which spans the phase block', () => {
-    expect(layout.axis).toBeDefined();
+    expect(layout.axes).toHaveLength(1);
+    const axis = layout.axes[0];
     for (const p of phases) {
       const r = layout.rects.get(p)!;
-      expect(r.y + r.h / 2).toBeCloseTo(layout.axis!.y, 6);
+      expect(r.y + r.h / 2).toBeCloseTo(axis.y, 6);
     }
     const first = layout.bands.get(phases[0])!;
     const last = layout.bands.get(phases[phases.length - 1])!;
-    expect(layout.axis!.x1).toBeCloseTo(first.start, 6);
-    expect(layout.axis!.x2).toBeCloseTo(last.start + last.size, 6);
+    expect(axis.x1).toBeCloseTo(first.start, 6);
+    expect(axis.x2).toBeCloseTo(last.start + last.size, 6);
   });
 
   it('packs phase columns left to right in document order with a gapX gutter', () => {
@@ -289,7 +290,7 @@ describe('layoutTree timeline', () => {
   it('childless root: single rect, no axis', () => {
     const solo = normalize(node('root'), 'timeline');
     const l = layoutTree(solo, () => ({ w: 100, h: 24 }));
-    expect(l.axis).toBeUndefined();
+    expect(l.axes).toHaveLength(0);
     expect(l.rects.get('root')).toEqual({ x: 0, y: 0, w: 100, h: 24 });
   });
 
@@ -300,7 +301,7 @@ describe('layoutTree timeline', () => {
     expect(l.rects.get('a')).toEqual({ x: 0, y: 72, w: 100, h: 24 });
     expect(l.rects.get('a1')).toEqual({ x: 20, y: 110, w: 100, h: 24 });
     expect(l.rects.get('b')).toEqual({ x: 168, y: 72, w: 100, h: 24 });
-    expect(l.axis).toEqual({ y: 84, x1: 0, x2: 268 });
+    expect(l.axes).toEqual([{ y: 84, x1: 0, x2: 268 }]);
     expect(l.bounds).toEqual({ x: 0, y: 0, w: 268, h: 134 });
   });
 });
@@ -407,5 +408,209 @@ describe('floating trees', () => {
     for (const id of bare.rects.keys()) {
       expect(withFloating.rects.get(id)).toEqual(bare.rects.get(id));
     }
+  });
+});
+
+describe('branch style overrides', () => {
+  const styled = (id: string, style: string, children: FileNode[] = [], collapsed = false): FileNode => ({
+    id,
+    text: id,
+    style,
+    children,
+    ...(collapsed ? { collapsed } : {}),
+  });
+  const { gapX, gapY } = DEFAULT_LAYOUT;
+
+  it('org-chart branch in a right map: incoming dir right, descendants down', () => {
+    const doc = normalize(
+      node('root', [styled('org', 'down', [node('o1'), node('o2', [node('o2x')])]), node('b')]),
+    );
+    const layout = layoutTree(doc, sizeOf);
+    expect(layout.dirs.get('org')).toBe('right');
+    for (const id of ['o1', 'o2', 'o2x']) expect(layout.dirs.get(id)).toBe('down');
+    // Inside the block: children hang gapX below, centered on the parent.
+    const org = layout.rects.get('org')!;
+    const o1 = layout.rects.get('o1')!;
+    expect(o1.y).toBeCloseTo(org.y + org.h + gapX, 6);
+    // The block hangs gapX right of the map root and stays in its own y-band.
+    const root = layout.rects.get('root')!;
+    expect(org.x).toBeGreaterThanOrEqual(root.x + root.w + gapX - 0.001);
+    const orgBand = layout.bands.get('org')!;
+    const bBand = layout.bands.get('b')!;
+    expect(bBand.start).toBeGreaterThanOrEqual(orgBand.start + orgBand.size + gapY - 0.001);
+    expectNoOverlap(layout);
+    expectBoundsContainAll(layout);
+  });
+
+  it('a right override inside a right map is a no-op (identity)', () => {
+    const plain = normalize(node('root', [node('a', [node('a1')]), node('b')]));
+    const overridden = normalize(node('root', [styled('a', 'right', [node('a1')]), node('b')]));
+    const a = layoutTree(plain, sizeOf);
+    const b = layoutTree(overridden, sizeOf);
+    for (const id of a.rects.keys()) expect(b.rects.get(id)).toEqual(a.rects.get(id));
+  });
+
+  it('invalid or balanced style values are treated as inherit', () => {
+    const plain = normalize(node('root', [node('a', [node('a1')]), node('b')]));
+    for (const junk of ['balanced', 'zigzag']) {
+      const doc = normalize(node('root', [styled('a', junk, [node('a1')]), node('b')]));
+      const layout = layoutTree(doc, sizeOf);
+      for (const id of layout.rects.keys()) {
+        expect(layout.rects.get(id), junk).toEqual(layoutTree(plain, sizeOf).rects.get(id));
+      }
+    }
+  });
+
+  it('each timeline branch draws its own axis', () => {
+    const one = layoutTree(
+      normalize(node('root', [styled('t1', 'timeline', [node('p1', [node('r1')])]), node('b')])),
+      sizeOf,
+    );
+    expect(one.axes).toHaveLength(1);
+    const two = layoutTree(
+      normalize(
+        node('root', [
+          styled('t1', 'timeline', [node('p1')]),
+          styled('t2', 'timeline', [node('p2')]),
+        ]),
+      ),
+      sizeOf,
+    );
+    expect(two.axes).toHaveLength(2);
+    // A timeline map with a down branch holding a nested timeline: two axes.
+    const nested = layoutTree(
+      normalize(
+        node('root', [
+          node('phase1', [node('row1')]),
+          styled('chart', 'down', [styled('t', 'timeline', [node('tp', [node('tr')])])]),
+        ]),
+        'timeline',
+      ),
+      sizeOf,
+    );
+    expect(nested.axes).toHaveLength(2);
+    expectNoOverlap(nested);
+    expectBoundsContainAll(nested);
+  });
+
+  it('timeline branch: phases sit on its axis, members are list rows', () => {
+    const doc = normalize(
+      node('root', [styled('t', 'timeline', [node('p1', [node('r1'), node('r2')]), node('p2')]), node('b')]),
+    );
+    const layout = layoutTree(doc, sizeOf);
+    expect(layout.dirs.get('t')).toBe('right'); // incoming dir from the right map
+    const axis = layout.axes[0];
+    for (const p of ['p1', 'p2']) {
+      const r = layout.rects.get(p)!;
+      expect(layout.dirs.get(p)).toBe('down');
+      expect(r.y + r.h / 2).toBeCloseTo(axis.y, 6);
+    }
+    for (const row of ['r1', 'r2']) expect(layout.dirs.get(row)).toBe('list');
+    expectNoOverlap(layout);
+    expectBoundsContainAll(layout);
+  });
+
+  it('balanced map: a left-side down block anchors its right edge gapX left of the root', () => {
+    const doc = normalize(
+      node('root', [node('a'), node('b'), styled('c', 'down', [node('c1'), node('c2')]), node('d')]),
+      'balanced',
+    );
+    const layout = layoutTree(doc, sizeOf);
+    expect(layout.dirs.get('c')).toBe('left');
+    for (const id of ['c1', 'c2']) expect(layout.dirs.get(id)).toBe('down');
+    const root = layout.rects.get('root')!;
+    const blockRight = Math.max(
+      ...['c', 'c1', 'c2'].map((id) => layout.rects.get(id)!.x + layout.rects.get(id)!.w),
+    );
+    expect(blockRight).toBeCloseTo(root.x - gapX, 6);
+    expectNoOverlap(layout);
+    expectBoundsContainAll(layout);
+  });
+
+  it('nested overrides: right map → down branch → timeline grandchild', () => {
+    const doc = normalize(
+      node('root', [
+        styled('org', 'down', [
+          node('o1'),
+          styled('road', 'timeline', [node('ph', [node('row')])]),
+        ]),
+        node('b'),
+      ]),
+    );
+    const layout = layoutTree(doc, sizeOf);
+    expect(layout.dirs.get('org')).toBe('right');
+    expect(layout.dirs.get('road')).toBe('down'); // incoming dir from the org chart
+    expect(layout.dirs.get('ph')).toBe('down');
+    expect(layout.dirs.get('row')).toBe('list');
+    expect(layout.axes).toHaveLength(1);
+    expectNoOverlap(layout);
+    expectBoundsContainAll(layout);
+  });
+
+  it('collapsed override root: a single rect with the incoming dir, no axis', () => {
+    const doc = normalize(
+      node('root', [styled('t', 'timeline', [node('p1'), node('p2')], true), node('b')]),
+    );
+    const layout = layoutTree(doc, sizeOf);
+    expect(layout.rects.has('p1')).toBe(false);
+    expect(layout.dirs.get('t')).toBe('right'); // incoming dir from the right map
+    expect(layout.axes).toHaveLength(0);
+    expectNoOverlap(layout);
+  });
+
+  it('override phases and rows inside a timeline map', () => {
+    const doc = normalize(
+      node('root', [
+        node('p1', [styled('chart', 'down', [node('ch1'), node('ch2')]), node('row2')]),
+        styled('p2', 'down', [node('p2a')]),
+      ]),
+      'timeline',
+    );
+    const layout = layoutTree(doc, sizeOf);
+    const axis = layout.axes[0];
+    // Override phase: its node still sits centered on the axis.
+    const p2 = layout.rects.get('p2')!;
+    expect(p2.y + p2.h / 2).toBeCloseTo(axis.y, 6);
+    expect(layout.dirs.get('p2')).toBe('down');
+    expect(layout.dirs.get('p2a')).toBe('down');
+    // Override row: carries the list dir, block indented like a row.
+    const p1 = layout.rects.get('p1')!;
+    const chart = layout.rects.get('chart')!;
+    expect(layout.dirs.get('chart')).toBe('list');
+    expect(chart.x).toBeGreaterThanOrEqual(p1.x + LIST_INDENT - 0.001);
+    // The row after the block starts below the whole block.
+    const chartBand = layout.bands.get('chart')!;
+    const row2 = layout.rects.get('row2')!;
+    expect(row2.y).toBeCloseTo(chartBand.start + chartBand.size + DEFAULT_LAYOUT.gapY, 6);
+    expectNoOverlap(layout);
+    expectBoundsContainAll(layout);
+  });
+
+  it('floating trees honor their root style and keep the pos anchor', () => {
+    const floats = [
+      { pos: { x: 900, y: 400 }, root: styled('f', 'down', [node('f1'), node('f2')]) },
+      { pos: { x: 900, y: 800 }, root: styled('g', 'timeline', [node('g1', [node('g1x')])]) },
+    ];
+    const doc = normalize(node('root', [node('a')]), 'right', [], floats);
+    const layout = layoutTree(doc, sizeOf);
+    // Root NODE top-left lands exactly on pos, whatever the style.
+    const f = layout.rects.get('f')!;
+    expect(f.x).toBe(900);
+    expect(f.y).toBe(400);
+    const g = layout.rects.get('g')!;
+    expect(g.x).toBeCloseTo(900, 6);
+    expect(g.y).toBe(800);
+    // Down tree: children below, x-oriented band spans the block width.
+    const f1 = layout.rects.get('f1')!;
+    expect(f1.y).toBeCloseTo(f.y + f.h + gapX, 6);
+    const fBand = layout.bands.get('f')!;
+    for (const id of ['f', 'f1', 'f2']) {
+      const r = layout.rects.get(id)!;
+      expect(r.x).toBeGreaterThanOrEqual(fBand.start - 0.001);
+    }
+    // Timeline tree contributes its own axis.
+    expect(layout.axes).toHaveLength(1);
+    expectNoOverlap(layout);
+    expectBoundsContainAll(layout);
   });
 });

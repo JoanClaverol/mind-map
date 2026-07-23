@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { buildParentMap, denormalize, floatingEntry, isRootId, normalize, serializeFloating, subtreeIds, visibleIds } from './doc';
+import {
+  branchStyleOf,
+  buildParentMap,
+  denormalize,
+  effectiveStyleAt,
+  floatingEntry,
+  isRootId,
+  normalize,
+  serializeFloating,
+  subtreeIds,
+  visibleIds,
+} from './doc';
 import type { FileNode } from './types';
 
 const tree: FileNode = {
@@ -16,7 +27,7 @@ const tree: FileNode = {
         { id: 'a2', text: 'Alpha two', children: [] },
       ],
     },
-    { id: 'b', text: 'Beta', children: [{ id: 'b1', text: 'Beta one', children: [] }] },
+    { id: 'b', text: 'Beta', style: 'down', children: [{ id: 'b1', text: 'Beta one', children: [] }] },
   ],
 };
 
@@ -112,5 +123,50 @@ describe('floating trees', () => {
   it('cross-tree relationships survive normalization', () => {
     const doc = normalize(tree, 'right', [{ id: 'r1', from: 'b', to: 'f1' }], floating);
     expect(doc.relationships).toEqual([{ id: 'r1', from: 'b', to: 'f1' }]);
+  });
+});
+
+describe('branch styles', () => {
+  const styledTree: FileNode = {
+    id: 'root',
+    text: 'Root',
+    style: 'down', // ignored: doc.layout governs the map root
+    children: [
+      {
+        id: 'org',
+        text: 'Org',
+        style: 'down',
+        children: [{ id: 'o1', text: 'One', children: [{ id: 'o1x', text: 'Deep', children: [] }] }],
+      },
+      { id: 'plain', text: 'Plain', children: [] },
+      { id: 'junk', text: 'Junk', style: 'zigzag', children: [] },
+    ],
+  };
+  const floatTree = [{ pos: { x: 0, y: 0 }, root: { id: 'f', text: 'F', children: [{ id: 'f1', text: 'F1', children: [] }] } }];
+  const doc = normalize(styledTree, 'balanced', [], floatTree);
+
+  it('branchStyleOf returns valid overrides only and ignores the map root', () => {
+    expect(branchStyleOf(doc, 'org')).toBe('down');
+    expect(branchStyleOf(doc, 'plain')).toBeUndefined();
+    expect(branchStyleOf(doc, 'junk')).toBeUndefined();
+    expect(branchStyleOf(doc, 'root')).toBeUndefined();
+  });
+
+  it('effectiveStyleAt: nearest ancestor override wins, else doc.layout', () => {
+    expect(effectiveStyleAt(doc, 'root')).toBe('balanced');
+    expect(effectiveStyleAt(doc, 'org')).toBe('down');
+    expect(effectiveStyleAt(doc, 'o1')).toBe('down');
+    expect(effectiveStyleAt(doc, 'o1x')).toBe('down');
+    expect(effectiveStyleAt(doc, 'plain')).toBe('balanced');
+    expect(effectiveStyleAt(doc, 'junk')).toBe('balanced');
+  });
+
+  it('effectiveStyleAt: floating trees fall back to right', () => {
+    expect(effectiveStyleAt(doc, 'f')).toBe('right');
+    expect(effectiveStyleAt(doc, 'f1')).toBe('right');
+  });
+
+  it('style round-trips through normalize/denormalize', () => {
+    expect(denormalize(normalize(styledTree))).toEqual(styledTree);
   });
 });

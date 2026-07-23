@@ -74,6 +74,17 @@ describe('applyDocOp add_nodes', () => {
     const doc = makeDoc();
     expect(applyDocOp(doc, { type: 'add_nodes', parentId: 'b', branches: [] }).ok).toBe(false);
   });
+
+  it('carries a branch style on inserted nodes', () => {
+    const doc = makeDoc();
+    applyDocOp(doc, {
+      type: 'add_nodes',
+      parentId: 'b',
+      branches: [{ ...branch('x', 'X', [branch('x1', 'X1')]), style: 'timeline' }],
+    });
+    expect(doc.nodes.x.style).toBe('timeline');
+    expect(doc.nodes.x1.style).toBeUndefined();
+  });
 });
 
 describe('applyDocOp edit_node', () => {
@@ -377,5 +388,17 @@ describe('applyDocOp set_node_meta', () => {
     const doc = makeDoc();
     expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'root', color: 'clay' }).ok).toBe(true);
     expect(doc.nodes.root.color).toBe('clay');
+  });
+
+  it('sets, clears, and rejects branch styles', () => {
+    const doc = makeDoc();
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', style: 'down' }).ok).toBe(true);
+    expect(doc.nodes.b.style).toBe('down');
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', style: null }).ok).toBe(true);
+    expect(doc.nodes.b.style).toBeUndefined();
+    const balanced = applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', style: 'balanced' as never });
+    expect(balanced.ok).toBe(false);
+    expect(!balanced.ok && balanced.reason).toContain('map-level only');
+    expect(applyDocOp(doc, { type: 'set_node_meta', nodeId: 'b', style: 'zigzag' as never }).ok).toBe(false);
   });
 });

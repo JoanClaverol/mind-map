@@ -181,11 +181,11 @@ interface FileNode {
   id: string;
   text: string;
   collapsed?: boolean;
-  todoId?: string;      // set only if pushed to the external todo service
   color?: string;       // palette name: sage | mist | clay | sand | rose
   icon?: string;        // leading emoji shown before the text (max 16 chars)
   note?: string;        // longer hidden text (max 2000 chars)
   tags?: string[];      // searchable labels (max 8 tags, 24 chars each)
+  style?: string;       // subtree structure override: right | down | timeline ('balanced' is map-level only)
   children: FileNode[];
 }
 
@@ -198,7 +198,8 @@ interface Relationship {
 ```
 
 - The root node is the map title. `floating` holds detached trees (XMind floating topics); `pos` is the world position of each tree root, advisory for you (the user drags trees).
-- `layout` defaults to `'right'` if omitted; floating trees always lay out as compact right-trees.
+- `layout` defaults to `'right'` if omitted; floating trees lay out as compact right-trees unless their root carries a `style` override.
+- A node's `style` renders its whole subtree in that structure inside the map (e.g. an org-chart branch in a right-tree). The field round-trips through all tools; there is no dedicated tool argument for it yet — in the app it's cycled with ⇧B.
 - `relationships` are free directional arrows between any two nodes — including across trees; they are **not** parent/child links.
 
 ## How to generate a good map

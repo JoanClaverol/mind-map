@@ -4,9 +4,10 @@ import { refreshGallery } from '../gallery/galleryData';
 import { getLastOpened } from '../gallery/recents';
 import { buildSections, visibleOrder } from '../gallery/sections';
 import { splitBalanced } from '../layout/layout';
-import { buildParentMap, newId } from '../model/doc';
+import { branchStyleOf, buildParentMap, effectiveStyleAt, newId } from '../model/doc';
 import { branchToMarkdown, markdownToBranches } from '../model/markdown';
-import { LAYOUT_LABELS, LAYOUT_STYLES, type MapMeta } from '../model/types';
+import { viewScope } from '../model/search';
+import { BRANCH_STYLES, LAYOUT_LABELS, LAYOUT_STYLES, type BranchStyle, type MapMeta } from '../model/types';
 import { getCanvasHost, getLastLayout } from '../canvas/layoutCache';
 import { fitToContent, zoomAt } from '../canvas/viewport';
 import * as cmd from './commands';
@@ -68,12 +69,6 @@ function navSibling(dir: 1 | -1, axis: 'y' | 'x' = 'y'): void {
 
 type ScreenDir = 'left' | 'right' | 'up' | 'down';
 
-/** The root the canvas currently shows: the hoisted node (⌘.) or the map root. */
-function viewRootId(): string {
-  const s = state();
-  return s.hoistId && s.doc!.nodes[s.hoistId] ? s.hoistId : s.doc!.rootId;
-}
-
 function selectParent(id: string): void {
   const s = state();
   if (id === s.hoistId) return; // the hoisted node's parent is off-canvas
@@ -100,18 +95,46 @@ function selectBalancedHalf(id: string, side: 'left' | 'right'): void {
 }
 
 /**
+ * The structure that arranges `id` among its siblings, as rendered: the
+ * effective style of its parent (branch overrides included), hoist-aware.
+ * With no overrides this is exactly doc.layout — behavior is unchanged.
+ */
+function structureAt(id: string): { style: string; rootId: string; parents: Record<string, string> } {
+  const s = state();
+  const viewDoc = viewScope(s.doc!, s.hoistId);
+  const parents = buildParentMap(viewDoc);
+  const parentId = id === viewDoc.rootId ? undefined : parents[id];
+  return { style: effectiveStyleAt(viewDoc, parentId ?? id, parents), rootId: viewDoc.rootId, parents };
+}
+
+/** Root of the timeline structure `id` sits in: the override node that introduced it, else the view root. */
+function timelineRootOf(id: string, rootId: string, parents: Record<string, string>): string {
+  const s = state();
+  const viewDoc = viewScope(s.doc!, s.hoistId);
+  let cur = id;
+  while (cur !== rootId) {
+    const p: string | undefined = parents[cur];
+    if (p === undefined) break; // floating root
+    if (branchStyleOf(viewDoc, cur) === 'timeline' && effectiveStyleAt(viewDoc, p, parents) !== 'timeline') break;
+    cur = p;
+  }
+  return cur;
+}
+
+/**
  * hjkl/arrows mean screen direction; the tree operation they map to depends on
- * the layout style and, in balanced, on which side of the root the node sits
- * (left-side branches mirror: deeper is always away from the root on screen).
+ * the structure the node sits in (map layout or a branch override) and, in
+ * balanced, on which side of the root the node sits (left-side branches
+ * mirror: deeper is always away from the root on screen).
  */
 function navScreen(dirKey: ScreenDir): void {
   withSelection((id) => {
-    const s = state();
-    const style = s.doc!.layout;
-    const rootId = viewRootId(); // hoisted views re-root the layout at the hoisted node
+    const { style, rootId, parents } = structureAt(id);
     if (style === 'timeline') {
-      // Root and phases sit on the horizontal axis; column rows are an outline.
-      const phaseRow = id === rootId || buildParentMap(s.doc!)[id] === rootId;
+      // The structure root and its phases sit on the horizontal axis; column
+      // rows are an outline. Generalized to branch timelines via their root.
+      const tlRoot = timelineRootOf(id, rootId, parents);
+      const phaseRow = id === tlRoot || parents[id] === tlRoot;
       if (phaseRow) {
         if (dirKey === 'up') return selectParent(id);
         if (dirKey === 'down') return selectFirstChild(id);
@@ -179,9 +202,9 @@ function moveScreen(dirKey: ScreenDir): void {
   withSelection((id) => {
     const s = state();
     if (id === s.doc!.rootId || id === s.hoistId) return;
-    const style = s.doc!.layout;
+    const { style, rootId, parents } = structureAt(id);
     if (style === 'timeline') {
-      if (buildParentMap(s.doc!)[id] === viewRootId()) {
+      if (parents[id] === timelineRootOf(id, rootId, parents)) {
         // Phase: reorder along the axis; ⇧J demotes it into the previous column.
         if (dirKey === 'up') return outdentNode(id); // parent is root → no-op
         if (dirKey === 'down') return indentNode(id);
@@ -475,6 +498,23 @@ export const registry: Record<string, AppCommand> = {
       s.requestFit(); // fires after the new layout is computed — view.fit here would read the stale one
       s.addToast('info', `Structure: ${LAYOUT_LABELS[next]}`);
     },
+  },
+  'node.cycleStyle': {
+    description: 'Cycle branch structure (inherit → right → org chart → roadmap)',
+    run: () =>
+      withSelection((id) => {
+        const s = state();
+        if (id === s.doc!.rootId) {
+          // On the map root a branch override is meaningless — cycle the map.
+          registry['map.cycleLayout'].run();
+          return;
+        }
+        const cur = branchStyleOf(s.doc!, id);
+        const next: BranchStyle | undefined =
+          cur === undefined ? BRANCH_STYLES[0] : BRANCH_STYLES[BRANCH_STYLES.indexOf(cur) + 1];
+        s.runCommand('setNodeStyle', (d) => cmd.setNodeMeta(d, id, { style: next ?? null }));
+        s.addToast('info', next ? `Branch: ${LAYOUT_LABELS[next]}` : 'Branch: inherit');
+      }),
   },
   'view.zoomIn': {
     description: 'Zoom in',

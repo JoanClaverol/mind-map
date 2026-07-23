@@ -1,7 +1,7 @@
 import { applyPatches, enablePatches, produceWithPatches, type Draft, type Patch } from 'immer';
 import { describe, expect, it } from 'vitest';
 import { normalize } from '../model/doc';
-import { LAYOUT_STYLES, type Doc } from '../model/types';
+import { BRANCH_STYLES, LAYOUT_STYLES, type Doc } from '../model/types';
 import * as cmd from './commands';
 import type { CommandResult } from './commands';
 
@@ -146,6 +146,25 @@ describe('commands', () => {
     });
   });
 
+  describe('setNodeMeta branch style', () => {
+    const doc = () =>
+      normalize({ id: 'root', text: 'r', children: [{ id: 'a', text: 'a', children: [] }] });
+
+    it('produces a patch pair whose inverse clears the style again', () => {
+      const { next, patches, inversePatches } = execute(doc(), (d) =>
+        cmd.setNodeMeta(d, 'a', { style: 'down' }),
+      );
+      expect(next.nodes.a.style).toBe('down');
+      expect(patches.length).toBeGreaterThan(0);
+      expect(applyPatches(next, inversePatches).nodes.a.style).toBeUndefined();
+    });
+
+    it('clearing an absent style → zero patches', () => {
+      const { patches } = execute(doc(), (d) => cmd.setNodeMeta(d, 'a', { style: null }));
+      expect(patches).toHaveLength(0);
+    });
+  });
+
   describe('relationships', () => {
     const tree = () =>
       normalize({
@@ -233,6 +252,10 @@ describe('commands', () => {
         return cmd.moveNode(d, id, parent, anchor);
       },
       (d: Draft<Doc>) => cmd.setLayoutStyle(d, LAYOUT_STYLES[Math.floor(rand() * LAYOUT_STYLES.length)]),
+      (d: Draft<Doc>, id: string) => {
+        const pool = [...BRANCH_STYLES, null] as const;
+        return cmd.setNodeMeta(d, id, { style: pool[Math.floor(rand() * pool.length)] });
+      },
       (d: Draft<Doc>, id: string) => {
         const ids = Object.keys(d.nodes);
         const to = ids[Math.floor(rand() * ids.length)];

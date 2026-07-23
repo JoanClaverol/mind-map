@@ -32,6 +32,14 @@ export const LAYOUT_LABELS: Record<LayoutStyle, string> = {
   timeline: 'roadmap',
 };
 
+/**
+ * Structures a single branch may override to ('balanced' splits around the map
+ * root, so it stays map-level only). A node's `style` restyles its subtree.
+ */
+export type BranchStyle = Exclude<LayoutStyle, 'balanced'>;
+
+export const BRANCH_STYLES: BranchStyle[] = ['right', 'down', 'timeline'];
+
 /** A node as stored on disk: nested, human-readable, git-diffable. */
 export interface FileNode {
   id: string;
@@ -45,6 +53,8 @@ export interface FileNode {
   note?: string;
   /** Free labels, searchable via find_nodes. */
   tags?: string[];
+  /** Subtree structure override (see BRANCH_STYLES) — typed loosely because disk is untrusted; migrate narrows. */
+  style?: string;
   children: FileNode[];
 }
 
@@ -140,6 +150,7 @@ export interface DocNode {
   icon?: string;
   note?: string;
   tags?: string[];
+  style?: string;
   children: string[];
 }
 

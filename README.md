@@ -184,7 +184,8 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
 - **Live AI co-editing** — any MCP client edits the open map; changes stream in, undoable.
 - **Keyboard-first editing** — add, navigate, reorder, and restructure without the mouse.
 - **Four layouts** — logic chart, balanced map, org chart, and a Now/Next/Later roadmap;
-  cycle per-map with `⇧S`.
+  cycle per-map with `⇧S`. Any branch can override the map's structure (`⇧B`): an org-chart
+  or roadmap subtree inside a right-tree map, nested however you like.
 - **Floating trees** — several root trees on one canvas (XMind floating topics): brainstorm
   clusters side by side, connect them with arrows, attach/detach branches by dragging.
 - **Relationship arrows** — free directional links between any two nodes, across trees.
@@ -217,6 +218,7 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `⇧J` / `⇧K` | Move node down / up on screen (reorder; nest/un-nest in org chart) |
 | `⇧L` / `⇧H` | Move node right / left on screen (nest/un-nest; reorder in org chart) |
 | `⇧S` | Cycle layout structure: right tree → balanced map → org chart → roadmap (per map, undoable) |
+| `⇧B` | Cycle the selected **branch**'s structure: inherit → right tree → org chart → roadmap (the subtree renders in that structure inside the map; on the root it cycles the map) |
 | `⇧N` | New **floating tree** at the view center (a detached tree on the same canvas — connect it later with arrows, or drag it onto a node to attach) |
 | `⇧I` | **Node inspector** — view/edit the selected node's color, icon, note, and tags (panel follows the selection; Esc closes) |
 | `/` | Collapse / expand branch |
@@ -240,7 +242,7 @@ to attach the whole tree, or to empty canvas to reposition it. `Esc` cancels a d
 removes it, `Esc` deselects.
 
 > Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧I` opens the inspector, `⇧N` adds a floating
-> tree, and `⇧S` switches structure, typing a *capital* A/H/I/J/K/L/N/S won't trigger
+> tree, and `⇧S`/`⇧B` switch structure, typing a *capital* A/B/H/I/J/K/L/N/S won't trigger
 > type-to-edit — press `Space` to edit instead, or unbind them via `localStorage.keymap`.
 
 ## Gallery

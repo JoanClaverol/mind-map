@@ -131,4 +131,24 @@ describe('migrateMapFile v2 (floating trees + metadata)', () => {
     expect(migrated.root.children[0].tags).toBeUndefined();
     expect(migrated.floating![0].root.color).toBe('sage');
   });
+
+  it('keeps valid branch styles and strips balanced/junk ones', () => {
+    const migrated = migrateMapFile({
+      ...base,
+      root: {
+        id: 'r',
+        text: 't',
+        children: [
+          { id: 'a', text: 'a', style: 'down', children: [] },
+          { id: 'b', text: 'b', style: 'balanced', children: [] },
+          { id: 'c', text: 'c', style: 42, children: [] },
+        ],
+      },
+      floating: [{ pos: { x: 0, y: 0 }, root: { id: 'f', text: 'f', style: 'timeline', children: [] } }],
+    });
+    expect(migrated.root.children[0].style).toBe('down');
+    expect(migrated.root.children[1].style).toBeUndefined();
+    expect(migrated.root.children[2].style).toBeUndefined();
+    expect(migrated.floating![0].root.style).toBe('timeline');
+  });
 });

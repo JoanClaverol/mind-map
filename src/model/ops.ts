@@ -1,10 +1,12 @@
 import { floatingEntry, newId, subtreeIds } from './doc';
 import {
+  BRANCH_STYLES,
   MAX_ICON_LEN,
   MAX_NOTE_LEN,
   MAX_TAGS,
   MAX_TAG_LEN,
   NODE_COLORS,
+  type BranchStyle,
   type Doc,
   type DocNode,
   type FileNode,
@@ -41,6 +43,7 @@ export type MapOp =
       icon?: string | null;
       note?: string | null;
       tags?: string[] | null;
+      style?: BranchStyle | null;
     };
 
 /**
@@ -98,12 +101,24 @@ export function applyDocOp(doc: Doc, op: MapOp): OpResult {
 function setNodeMeta(doc: Doc, op: Extract<MapOp, { type: 'set_node_meta' }>): OpResult {
   const node = doc.nodes[op.nodeId];
   if (!node) return { ok: false, reason: `node ${op.nodeId} not found` };
-  if (op.color === undefined && op.icon === undefined && op.note === undefined && op.tags === undefined) {
-    return { ok: false, reason: 'set_node_meta requires at least one of color/icon/note/tags' };
+  if (
+    op.color === undefined &&
+    op.icon === undefined &&
+    op.note === undefined &&
+    op.tags === undefined &&
+    op.style === undefined
+  ) {
+    return { ok: false, reason: 'set_node_meta requires at least one of color/icon/note/tags/style' };
   }
   // Validate everything before mutating anything.
   if (op.color != null && !NODE_COLORS.includes(op.color)) {
     return { ok: false, reason: `unknown color "${op.color}" — valid colors: ${NODE_COLORS.join(', ')}` };
+  }
+  if (op.style != null && !BRANCH_STYLES.includes(op.style)) {
+    return {
+      ok: false,
+      reason: `unknown branch style "${op.style}" — valid styles: ${BRANCH_STYLES.join(', ')} (balanced is map-level only)`,
+    };
   }
   const icon = op.icon == null ? op.icon : op.icon.trim();
   if (icon != null && icon.length > MAX_ICON_LEN) {
@@ -147,6 +162,10 @@ function setNodeMeta(doc: Doc, op: Extract<MapOp, { type: 'set_node_meta' }>): O
     if (tags === null || tags.length === 0) delete node.tags;
     else node.tags = tags;
   }
+  if (op.style !== undefined) {
+    if (op.style === null) delete node.style;
+    else node.style = op.style;
+  }
   return { ok: true, select: op.nodeId };
 }
 
@@ -182,6 +201,7 @@ function insertBranch(doc: Doc, branch: FileNode, intoId: string | null): void {
   if (branch.icon) node.icon = branch.icon;
   if (branch.note) node.note = branch.note;
   if (branch.tags?.length) node.tags = [...branch.tags];
+  if (branch.style) node.style = branch.style;
   doc.nodes[branch.id] = node;
   if (intoId !== null) doc.nodes[intoId].children.push(branch.id);
   for (const child of branch.children) insertBranch(doc, child, branch.id);

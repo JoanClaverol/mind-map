@@ -1,5 +1,15 @@
 import { nanoid } from 'nanoid';
-import type { Doc, DocNode, FileNode, FloatingTree, LayoutStyle, Position, Relationship } from './types';
+import {
+  BRANCH_STYLES,
+  type BranchStyle,
+  type Doc,
+  type DocNode,
+  type FileNode,
+  type FloatingTree,
+  type LayoutStyle,
+  type Position,
+  type Relationship,
+} from './types';
 
 export function newId(): string {
   return nanoid(12);
@@ -24,6 +34,7 @@ export function normalize(
     if (n.icon) node.icon = n.icon;
     if (n.note) node.note = n.note;
     if (n.tags?.length) node.tags = [...n.tags];
+    if (n.style) node.style = n.style;
     nodes[n.id] = node;
     n.children.forEach(walk);
   };
@@ -52,7 +63,28 @@ export function denormalize(doc: Doc, id: string = doc.rootId): FileNode {
   if (n.icon) out.icon = n.icon;
   if (n.note) out.note = n.note;
   if (n.tags?.length) out.tags = [...n.tags];
+  if (n.style) out.style = n.style;
   return out;
+}
+
+/** id's valid branch-style override, or undefined. The map root's own style is ignored (doc.layout governs). */
+export function branchStyleOf(doc: Doc, id: string): BranchStyle | undefined {
+  if (id === doc.rootId) return undefined;
+  const s = doc.nodes[id]?.style;
+  return s && BRANCH_STYLES.includes(s as BranchStyle) ? (s as BranchStyle) : undefined;
+}
+
+/**
+ * The layout structure governing id's subtree: nearest self-or-ancestor
+ * override, else doc.layout (main tree) or 'right' (floating trees).
+ */
+export function effectiveStyleAt(doc: Doc, id: string, parents = buildParentMap(doc)): LayoutStyle {
+  for (let cur: string | undefined = id; cur !== undefined; cur = parents[cur]) {
+    const style = branchStyleOf(doc, cur);
+    if (style) return style;
+    if (cur === doc.rootId) return doc.layout;
+  }
+  return 'right'; // walked off the top of a floating tree
 }
 
 /** True for the main root or any floating tree root. */

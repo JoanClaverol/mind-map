@@ -347,15 +347,16 @@ export function MindMapCanvas() {
           </marker>
         </defs>
         <g transform={`translate(${viewport.x},${viewport.y}) scale(${viewport.zoom})`}>
-          {layout.axis && (
+          {layout.axes.map((axis, i) => (
             <line
+              key={i}
               className="timeline-axis"
-              x1={layout.axis.x1}
-              y1={layout.axis.y}
-              x2={layout.axis.x2}
-              y2={layout.axis.y}
+              x1={axis.x1}
+              y1={axis.y}
+              x2={axis.x2}
+              y2={axis.y}
             />
-          )}
+          ))}
           <g className="edges">
             {[...layout.rects.keys()].flatMap((id) => {
               const node = doc.nodes[id];

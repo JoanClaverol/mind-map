@@ -62,8 +62,9 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'shift+n', context: 'nav', command: 'tree.addFloating' },
   // node inspector (shift+i shadows type-to-edit for capital I)
   { combo: 'shift+i', context: 'nav', command: 'node.toggleInspector' },
-  // view (shift+s shadows type-to-edit for capital S, like H/J/K/L/R)
+  // view (shift+s/shift+b shadow type-to-edit for capitals S/B, like H/J/K/L/R)
   { combo: 'shift+s', context: 'nav', command: 'map.cycleLayout' },
+  { combo: 'shift+b', context: 'nav', command: 'node.cycleStyle' },
   { combo: 'mod+f', context: 'nav', command: 'view.search' },
   { combo: 'mod+.', context: 'nav', command: 'view.hoist' },
   { combo: 'mod+=', context: 'nav', command: 'view.zoomIn' },

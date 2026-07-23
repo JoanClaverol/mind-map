@@ -138,6 +138,7 @@ interface FileNode {
   icon?: string;    // leading emoji shown before the text (max 16 chars)
   note?: string;    // longer hidden text (max 2000 chars)
   tags?: string[];  // searchable labels (max 8 tags, 24 chars each)
+  style?: string;   // subtree structure override: right | down | timeline ('balanced' is map-level only)
   children: FileNode[];
 }
 \`\`\`

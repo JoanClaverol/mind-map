@@ -1,4 +1,5 @@
 import {
+  BRANCH_STYLES,
   LAYOUT_STYLES,
   MAX_ICON_LEN,
   MAX_NOTE_LEN,
@@ -7,6 +8,7 @@ import {
   NODE_COLORS,
   SCHEMA_VERSION,
   normalizeFolderName,
+  type BranchStyle,
   type FileNode,
   type FloatingTree,
   type LayoutStyle,
@@ -25,6 +27,8 @@ function sanitizeNodeMeta(node: FileNode): void {
   // todoId belonged to a removed integration — strip it from old files.
   delete (node as FileNode & { todoId?: string }).todoId;
   if (node.color !== undefined && !NODE_COLORS.includes(node.color as NodeColor)) delete node.color;
+  // Branch styles: 'balanced' is map-level only, so it is invalid here too.
+  if (node.style !== undefined && !BRANCH_STYLES.includes(node.style as BranchStyle)) delete node.style;
   if (node.icon !== undefined) {
     const icon = typeof node.icon === 'string' ? node.icon.trim() : '';
     if (icon && icon.length <= MAX_ICON_LEN) node.icon = icon;

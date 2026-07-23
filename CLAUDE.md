@@ -11,7 +11,7 @@ Canonical docs — read these rather than duplicating their content here:
 
 - **All doc mutations go through commands**: pure Immer-draft functions in `src/state/commands.ts`, run via `store.runCommand` (produceWithPatches). Never mutate `doc` outside this path — undo/redo depends on it.
 - **Hotkeys never call store internals**: they resolve to command ids in `src/state/registry.ts`. New feature = new registry command + keymap binding.
-- **Layout is pure**: `layoutTree(doc, sizeOf)` in `src/layout/layout.ts`; `measure.ts` must mirror the `.node-text` CSS. A new structure must fill in the result's `dirs` map.
+- **Layout is pure**: `layoutTree(doc, sizeOf)` in `src/layout/layout.ts`; `measure.ts` must mirror the `.node-text` CSS. A new structure must fill in the result's `dirs` map. A node's `style` overrides its subtree's structure; at an override boundary the node's `dir` reflects the parent structure (the incoming edge), its descendants the sub-style's.
 - The server (`server/`) imports shared types from `src/model/` only; `server/app.ts` stays framework-only (no `serve()`).
 
 ## Verify
