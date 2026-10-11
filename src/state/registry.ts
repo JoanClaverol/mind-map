@@ -10,6 +10,8 @@ import { viewScope } from '../model/search';
 import { BRANCH_STYLES, LAYOUT_LABELS, LAYOUT_STYLES, NODE_COLORS, type BranchStyle, type MapMeta, type NodeColor } from '../model/types';
 import { getCanvasHost, getLastLayout } from '../canvas/layoutCache';
 import { fitToContent, zoomAt } from '../canvas/viewport';
+import { buildSvg, download, exportFileName, svgToPng } from '../canvas/exportImage';
+import { applySketchTheme, saveSketchPref } from '../canvas/sketch';
 import * as cmd from './commands';
 import { useStore } from './store';
 
@@ -626,6 +628,44 @@ export const registry: Record<string, AppCommand> = {
       if (!layout) return;
       const { w, h } = hostSize();
       state().setViewport(fitToContent(layout.bounds, w, h));
+    },
+  },
+  'view.toggleSketch': {
+    description: 'Toggle the hand-drawn (sketch) look',
+    run: () => {
+      const s = state();
+      const on = !s.sketch;
+      s.setSketch(on);
+      saveSketchPref(on);
+      applySketchTheme(on, () => state().bumpMeasureEpoch());
+      s.addToast('info', on ? 'Sketch look' : 'Clean look');
+    },
+  },
+  'export.png': {
+    description: 'Export the map as a PNG image (what you see: hoist and filters apply)',
+    run: () => {
+      const s = state();
+      buildSvg()
+        .then((out) => (out ? svgToPng(out) : null))
+        .then((png) => {
+          if (!png) return;
+          download(png, exportFileName(s.title, 'png'));
+          s.addToast('success', 'Exported PNG');
+        })
+        .catch((e: Error) => s.addToast('error', `PNG export failed: ${e.message}`));
+    },
+  },
+  'export.svg': {
+    description: 'Export the map as an SVG vector image',
+    run: () => {
+      const s = state();
+      buildSvg()
+        .then((out) => {
+          if (!out) return;
+          download(new Blob([out.svg], { type: 'image/svg+xml' }), exportFileName(s.title, 'svg'));
+          s.addToast('success', 'Exported SVG');
+        })
+        .catch((e: Error) => s.addToast('error', `SVG export failed: ${e.message}`));
     },
   },
   'view.search': {

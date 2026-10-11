@@ -92,6 +92,11 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'mod+shift+=', context: 'nav', command: 'view.zoomIn' },
   { combo: 'mod+-', context: 'nav', command: 'view.zoomOut' },
   { combo: 'mod+0', context: 'nav', command: 'view.fit' },
+  // sketch look (shift+d = Draw; shadows type-to-edit for capital D, like A/G/H/J/K/L)
+  { combo: 'shift+d', context: 'nav', command: 'view.toggleSketch' },
+  // export
+  { combo: 'mod+e', context: 'nav', command: 'export.png' },
+  { combo: 'mod+shift+e', context: 'nav', command: 'export.svg' },
   { combo: 'escape', context: 'nav', command: 'view.backToGallery' },
   // help (shift+? assumes a layout where ? is shifted; override via localStorage.keymap otherwise)
   { combo: 'shift+?', context: 'nav', command: 'view.toggleHelp' },

@@ -9,7 +9,11 @@ import type { MapOp } from '../src/model/ops';
 export type ServerEvent =
   | { kind: 'map-ops'; mapId: string; ops: MapOp[] }
   | { kind: 'map-created'; mapId: string; title: string }
-  | { kind: 'map-deleted'; mapId: string };
+  | { kind: 'map-deleted'; mapId: string }
+  // An MCP client asks open tabs to show a map (and optionally select a node).
+  | { kind: 'open-map'; mapId: string; nodeId?: string }
+  // export_map: the tab renders the map and POSTs the image to /api/exports/:requestId.
+  | { kind: 'export-request'; requestId: string; mapId: string; format: 'png' | 'svg' };
 
 type Subscriber = (e: ServerEvent) => void;
 

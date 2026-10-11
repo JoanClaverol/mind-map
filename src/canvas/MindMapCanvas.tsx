@@ -55,6 +55,7 @@ export function MindMapCanvas() {
   const editingGroup = useStore((s) => s.editingGroup);
   const viewport = useStore((s) => s.viewport);
   const hoistId = useStore((s) => s.hoistId);
+  const measureEpoch = useStore((s) => s.measureEpoch);
   const searchOpen = useStore((s) => s.searchOpen);
   const searchQuery = useStore((s) => s.searchQuery);
   const filterQuery = useStore((s) => s.filterQuery);
@@ -82,7 +83,9 @@ export function MindMapCanvas() {
     const result = layoutTree(viewDoc, (id) => sizes.get(id)!);
     setLastLayout(result);
     return result;
-  }, [viewDoc]);
+    // measureEpoch: the node font changed, so cached sizes were dropped — re-measure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewDoc, measureEpoch]);
 
   // Live search (panel open) or a pinned filter dims every non-matching node.
   const activeQuery = searchOpen ? searchQuery : (filterQuery ?? '');

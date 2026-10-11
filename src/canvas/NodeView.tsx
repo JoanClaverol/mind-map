@@ -1,6 +1,8 @@
 import type { NodeDir, Rect } from '../layout/layout';
 import { renderNodeContent } from '../model/inline-markdown';
 import { NODE_COLORS, type DocNode, type NodeColor } from '../model/types';
+import { useStore } from '../state/store';
+import { roughBox } from './sketch';
 
 /** Links never navigate in place — plain click keeps node selection, Cmd/Ctrl+click opens a tab. */
 function handleLinkClick(e: React.MouseEvent) {
@@ -32,6 +34,9 @@ interface NodeViewProps {
 }
 
 export function NodeView({ node, rect, dir, selected, isRoot, dimmed, linkSource, groupMember, onPressStart, onEdit, onToggleCollapse }: NodeViewProps) {
+  const sketch = useStore((s) => s.sketch);
+  const rectClass = `node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${linkSource ? ' link-source' : ''}${groupMember ? ' group-member' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`;
+  const box = sketch ? roughBox(node.id, rect.w, rect.h) : null;
   const badgeText = `+${node.children.length}`;
   const badgeWidth = 14 + 7 * badgeText.length;
   const badgePos =
@@ -53,12 +58,16 @@ export function NodeView({ node, rect, dir, selected, isRoot, dimmed, linkSource
         onEdit();
       }}
     >
-      <rect
-        width={rect.w}
-        height={rect.h}
-        rx={8}
-        className={`node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${linkSource ? ' link-source' : ''}${groupMember ? ' group-member' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`}
-      />
+      {box ? (
+        <>
+          {/* Same classes on both paths so palette/selection CSS applies; the
+              outline must stay last — `.node-rect.root + foreignObject` keys off it. */}
+          <path className={`${rectClass} sketch-fill`} d={box.fill} />
+          <path className={`${rectClass} sketch-outline`} d={box.outline} />
+        </>
+      ) : (
+        <rect width={rect.w} height={rect.h} rx={8} className={rectClass} />
+      )}
       <foreignObject width={rect.w} height={rect.h}>
         <div
           className="node-text"

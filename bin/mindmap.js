@@ -5,6 +5,8 @@
  *   mindmap up [--port N]     serve <cwd>/mindmaps/ on a free port (foreground)
  *   mindmap claude [args…]    up + open browser + launch claude with the
  *                             mind-map MCP injected; teardown when claude exits
+ *   mindmap omp [args…]       same, for omp (oh-my-pi): injects the server into
+ *                             .omp/mcp.json for the session, restored on exit
  *   mindmap stdio [--maps D]  stdio MCP server for clients that spawn processes
  *   mindmap config [client]   print MCP config snippets per client
  *
@@ -13,7 +15,7 @@
  * which is added to .git/info/exclude — never to the project's .gitignore.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, openSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, rmSync, rmdirSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -35,8 +37,8 @@ function findFreePort(preferred) {
       const srv = net.createServer();
       srv.once('error', () => resolve(null));
       srv.once('listening', () => srv.close(() => resolve(port)));
-      // Bind exactly like standalone.ts (0.0.0.0): a 127.0.0.1 or wildcard-:: probe
-      // can succeed while 0.0.0.0:port is taken (e.g. by another session).
+      // Probe the wildcard address: it fails if the port is taken on ANY interface
+      // (standalone.ts binds 127.0.0.1; another app may hold 0.0.0.0).
       srv.listen(port, '0.0.0.0');
     });
   return (async () => {
@@ -47,8 +49,8 @@ function findFreePort(preferred) {
   })();
 }
 
-/** Keep .mindmap/ out of the project's history without touching its .gitignore. */
-function excludeSessionDirFromGit() {
+/** Keep `entry` out of the project's history without touching its .gitignore. */
+function excludeFromGit(entry) {
   try {
     const excludePath = execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], {
       cwd: projectDir,
@@ -58,9 +60,9 @@ function excludeSessionDirFromGit() {
       .trim();
     const abs = path.resolve(projectDir, excludePath);
     const current = existsSync(abs) ? readFileSync(abs, 'utf8') : '';
-    if (!current.split('\n').includes('.mindmap/')) {
+    if (!current.split('\n').includes(entry)) {
       mkdirSync(path.dirname(abs), { recursive: true });
-      writeFileSync(abs, `${current}${current && !current.endsWith('\n') ? '\n' : ''}.mindmap/\n`);
+      writeFileSync(abs, `${current}${current && !current.endsWith('\n') ? '\n' : ''}${entry}\n`);
     }
   } catch {
     // Not a git repo — nothing to exclude.
@@ -89,7 +91,7 @@ async function startServer({ preferredPort, logToFile }) {
   }
   mkdirSync(mapsDir, { recursive: true });
   mkdirSync(sessionDir, { recursive: true });
-  excludeSessionDirFromGit();
+  excludeFromGit('.mindmap/');
 
   const port = await findFreePort(preferredPort);
   writeFileSync(
@@ -159,6 +161,71 @@ async function claude(args) {
 }
 
 /**
+ * omp has no --mcp-config flag, but it reads <cwd>/.omp/mcp.json. Merge a
+ * `mind-map` entry in for the session and put the file back exactly as it was
+ * on exit (or remove it, and the .omp/ dir, if we created them).
+ */
+function injectOmpMcp(port) {
+  const ompDir = path.join(projectDir, '.omp');
+  const file = path.join(ompDir, 'mcp.json');
+  const hadDir = existsSync(ompDir);
+  const original = existsSync(file) ? readFileSync(file, 'utf8') : null;
+  let config = { mcpServers: {} };
+  if (original !== null) {
+    try {
+      config = JSON.parse(original);
+      config.mcpServers ??= {};
+    } catch {
+      fail(`${path.relative(projectDir, file)} isn't valid JSON — fix it or remove it first`);
+    }
+  }
+  config.mcpServers['mind-map'] = { type: 'http', url: `http://localhost:${port}/mcp` };
+  mkdirSync(ompDir, { recursive: true });
+  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`);
+  if (original === null) excludeFromGit('.omp/mcp.json');
+  let restored = false;
+  return () => {
+    if (restored) return;
+    restored = true;
+    try {
+      if (original !== null) writeFileSync(file, original);
+      else {
+        rmSync(file, { force: true });
+        if (!hadDir) rmdirSync(ompDir);
+      }
+    } catch {
+      // best effort — a stale entry only points at a dead port
+    }
+  };
+}
+
+async function omp(args) {
+  const { port, child } = await startServer({ preferredPort: DEFAULT_PORT, logToFile: true });
+  const url = `http://localhost:${port}`;
+  const restore = injectOmpMcp(port);
+  const teardown = (code) => {
+    restore();
+    child.kill();
+    process.exit(code ?? 0);
+  };
+  console.log(`  ➜  serving mindmaps/ on ${url} (browser opening)`);
+  openBrowser(url);
+
+  console.log('  ➜  launching omp with mind-map tools…\n');
+  // OMP_MCP_REQUIRE_READY: tools are connected before the first turn.
+  const agent = spawn('omp', args, { stdio: 'inherit', env: { ...process.env, OMP_MCP_REQUIRE_READY: '1' } });
+  agent.on('error', (err) => {
+    restore();
+    child.kill();
+    fail(err.code === 'ENOENT' ? 'omp CLI not found — is oh-my-pi installed?' : err.message);
+  });
+  agent.on('exit', teardown);
+  const forward = () => agent.kill('SIGINT'); // let omp handle ^C; teardown follows its exit
+  process.on('SIGINT', forward);
+  process.on('SIGTERM', forward);
+}
+
+/**
  * Run the stdio MCP server (stdout is the MCP transport — this code path must
  * never print to stdout; errors go to stderr via fail()).
  */
@@ -215,6 +282,20 @@ args = ["${binPath}", "stdio"]
 # or, HTTP against a running app:
 [mcp_servers.mindmap]
 url = "http://localhost:5454/mcp"`,
+    omp: `# omp (oh-my-pi) — ~/.omp/agent/mcp.json (user) or .omp/mcp.json (project)
+# (or just run \`mindmap omp\` in a project: it wires this up per session)
+{
+  "mcpServers": {
+    "mindmap": { "type": "http", "url": "http://localhost:5454/mcp" }
+  }
+}
+
+# or stdio:
+{
+  "mcpServers": {
+    "mindmap": { "command": "node", "args": ["${binPath}", "stdio"] }
+  }
+}`,
     opencode: `# opencode — opencode.json in your project
 {
   "mcp": {
@@ -246,6 +327,9 @@ switch (command) {
   case 'claude':
     await claude(rest);
     break;
+  case 'omp':
+    await omp(rest);
+    break;
   case 'stdio':
     stdio(rest);
     break;
@@ -258,8 +342,9 @@ switch (command) {
 Usage:
   mindmap up [--port N]      serve ./mindmaps on a free port (Ctrl+C to stop)
   mindmap claude [args…]     up + open browser + launch claude with the tools
+  mindmap omp [args…]        same, launching omp (oh-my-pi)
   mindmap stdio [--maps D]   stdio MCP server (default maps dir: the main library)
-  mindmap config [client]    MCP config for claude-code | claude-desktop | codex | opencode
+  mindmap config [client]    MCP config for claude-code | claude-desktop | codex | opencode | omp
 
 Per-project maps live in ./mindmaps (commit them); session files in ./.mindmap (git-excluded).`);
     process.exit(command ? 1 : 0);

@@ -1,4 +1,11 @@
 import { LIST_INDENT, type NodeDir, type Rect } from '../layout/layout';
+import { useStore } from '../state/store';
+import { roughStroke } from './sketch';
+
+function Edge({ d }: { d: string }) {
+  const sketch = useStore((s) => s.sketch);
+  return <path className="edge" d={sketch ? roughStroke(d) : d} />;
+}
 
 /** dir is the child's entering direction — it picks the anchor sides. */
 export function EdgeView({ from, to, dir }: { from: Rect; to: Rect; dir: NodeDir }) {
@@ -10,9 +17,7 @@ export function EdgeView({ from, to, dir }: { from: Rect; to: Rect; dir: NodeDir
     const tx = to.x;
     const ty = to.y + to.h / 2;
     const r = 6;
-    return (
-      <path className="edge" d={`M ${sx},${sy} L ${sx},${ty - r} Q ${sx},${ty} ${sx + r},${ty} L ${tx},${ty}`} />
-    );
+    return <Edge d={`M ${sx},${sy} L ${sx},${ty - r} Q ${sx},${ty} ${sx + r},${ty} L ${tx},${ty}`} />;
   }
   if (dir === 'down') {
     const sx = from.x + from.w / 2;
@@ -20,12 +25,12 @@ export function EdgeView({ from, to, dir }: { from: Rect; to: Rect; dir: NodeDir
     const tx = to.x + to.w / 2;
     const ty = to.y;
     const my = sy + (ty - sy) / 2;
-    return <path className="edge" d={`M ${sx},${sy} C ${sx},${my} ${tx},${my} ${tx},${ty}`} />;
+    return <Edge d={`M ${sx},${sy} C ${sx},${my} ${tx},${my} ${tx},${ty}`} />;
   }
   const sx = dir === 'left' ? from.x : from.x + from.w;
   const sy = from.y + from.h / 2;
   const tx = dir === 'left' ? to.x + to.w : to.x;
   const ty = to.y + to.h / 2;
   const mx = sx + (tx - sx) / 2;
-  return <path className="edge" d={`M ${sx},${sy} C ${mx},${sy} ${mx},${ty} ${tx},${ty}`} />;
+  return <Edge d={`M ${sx},${sy} C ${mx},${sy} ${mx},${ty} ${tx},${ty}`} />;
 }

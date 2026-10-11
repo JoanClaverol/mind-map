@@ -1,6 +1,8 @@
 import type { Rect } from '../layout/layout';
 import { NODE_COLORS, type NodeColor } from '../model/types';
+import { useStore } from '../state/store';
 import { groupHull } from './groupHull';
+import { roughStroke } from './sketch';
 
 interface GroupViewProps {
   /** Rects of the members visible in the current layout. */
@@ -20,6 +22,7 @@ interface GroupViewProps {
  * simply drop out of the hull (the caller filters rects).
  */
 export function GroupView({ rects, label, color, selected, pending, onSelect, onEdit }: GroupViewProps) {
+  const sketch = useStore((s) => s.sketch);
   const hull = groupHull(rects);
   if (!hull) return null;
   const colorClass = color && NODE_COLORS.includes(color as NodeColor) ? ` color-${color}` : '';
@@ -37,7 +40,7 @@ export function GroupView({ rects, label, color, selected, pending, onSelect, on
     <g className={`group${stateClass}`}>
       <path
         className={`group-hull${colorClass}${stateClass}`}
-        d={hull.d}
+        d={sketch ? roughStroke(hull.d, 0.6) : hull.d}
         onMouseDown={pending ? undefined : press}
         onDoubleClick={pending ? undefined : dbl}
       />

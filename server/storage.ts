@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { nanoid } from 'nanoid';
 import { migrateMapFile } from '../src/model/migrate';
 import { FOLDERS_SCHEMA_VERSION, normalizeFolderName } from '../src/model/types';
 import type { FileNode, FolderInfo, FoldersManifest, MapFile, MapMeta } from '../src/model/types';
@@ -7,6 +8,10 @@ import type { FileNode, FolderInfo, FoldersManifest, MapFile, MapMeta } from '..
 const MAPS_DIR = process.env.MAPS_DIR ?? path.resolve(process.cwd(), 'maps');
 const FOLDERS_PATH = path.join(MAPS_DIR, 'folders.json');
 const ID_RE = /^[A-Za-z0-9_-]{6,30}$/;
+
+export function mapsDir(): string {
+  return MAPS_DIR;
+}
 
 export function isValidId(id: string): boolean {
   return ID_RE.test(id);
@@ -37,7 +42,8 @@ export async function listMaps(): Promise<{ maps: MapMeta[]; warnings: string[] 
   const maps: MapMeta[] = [];
   const warnings: string[] = [];
   for (const entry of entries) {
-    if (!entry.endsWith('.json') || entry === 'folders.json') continue;
+    // Dotfiles are in-flight/abandoned atomic-write temps, never maps.
+    if (!entry.endsWith('.json') || entry === 'folders.json' || entry.startsWith('.')) continue;
     try {
       const raw = JSON.parse(await fs.readFile(path.join(MAPS_DIR, entry), 'utf8'));
       const map = migrateMapFile(raw);
@@ -83,7 +89,7 @@ export async function readFolders(): Promise<string[]> {
 export async function writeFolders(folders: string[]): Promise<void> {
   await ensureMapsDir();
   const manifest: FoldersManifest = { schemaVersion: FOLDERS_SCHEMA_VERSION, folders };
-  const tmp = path.join(MAPS_DIR, '.tmp-folders.json');
+  const tmp = path.join(MAPS_DIR, `.tmp-folders-${nanoid(6)}.json`);
   await fs.writeFile(tmp, JSON.stringify(manifest, null, 2) + '\n', 'utf8');
   await fs.rename(tmp, FOLDERS_PATH);
 }
@@ -117,12 +123,44 @@ export async function listFolders(): Promise<FolderInfo[]> {
 
 /** Set or clear a map's folder, preserving updatedAt (curation, not editing). */
 export async function setMapFolder(id: string, folder: string | undefined): Promise<boolean> {
-  const map = await readMap(id);
-  if (!map) return false;
-  if (folder) map.folder = folder;
-  else delete map.folder;
-  await writeMap(map);
-  return true;
+  const r = await updateMap(id, (map) => {
+    if (folder) map.folder = folder;
+    else delete map.folder;
+    return map;
+  });
+  return r !== null;
+}
+
+// Per-map async mutex: MCP clients fire tool calls in parallel, and the browser
+// autosaves concurrently — every read-modify-write of one map is serialized here.
+const locks = new Map<string, Promise<unknown>>();
+
+export function withMapLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  const prev = locks.get(id) ?? Promise.resolve();
+  const run = prev.then(fn, fn);
+  const tail = run.catch(() => {});
+  locks.set(id, tail);
+  void tail.then(() => {
+    if (locks.get(id) === tail) locks.delete(id);
+  });
+  return run;
+}
+
+/**
+ * Locked read-modify-write. `fn` returns the map to write, or a non-map value
+ * (e.g. an error object) to abort without writing. Returns null if not found.
+ */
+export async function updateMap<R extends MapFile | { error: string }>(
+  id: string,
+  fn: (map: MapFile) => R | Promise<R>,
+): Promise<R | null> {
+  return withMapLock(id, async () => {
+    const map = await readMap(id);
+    if (!map) return null;
+    const next = await fn(map);
+    if (!('error' in next)) await writeMapUnlocked(next as MapFile);
+    return next;
+  });
 }
 
 export async function readMap(id: string): Promise<MapFile | null> {
@@ -135,11 +173,16 @@ export async function readMap(id: string): Promise<MapFile | null> {
   }
 }
 
-/** Atomic write: tmp file in the same directory, then rename. */
-export async function writeMap(map: MapFile): Promise<void> {
+/** Atomic write (locked): tmp file in the same directory, then rename. */
+export function writeMap(map: MapFile): Promise<void> {
+  return withMapLock(map.id, () => writeMapUnlocked(map));
+}
+
+async function writeMapUnlocked(map: MapFile): Promise<void> {
   await ensureMapsDir();
   const target = mapPath(map.id);
-  const tmp = path.join(MAPS_DIR, `.tmp-${map.id}.json`);
+  // Unique tmp name: concurrent writers must never share (and steal) one temp file.
+  const tmp = path.join(MAPS_DIR, `.tmp-${map.id}-${nanoid(6)}.json`);
   await fs.writeFile(tmp, JSON.stringify(map, null, 2) + '\n', 'utf8');
   await fs.rename(tmp, target);
 }

@@ -87,9 +87,10 @@ A handful of focused modules under [`server/`](server):
 | `app.ts` | The Hono app and all `/api/*` routes. Framework-only — mounted by the others. |
 | `vite-plugin.ts` | Mounts `app` as Vite middleware in dev. |
 | `standalone.ts` | Production entry: serves built assets + `serve()` (`pnpm start`). |
-| `storage.ts` | Maps CRUD with atomic writes (write temp file, rename). |
+| `storage.ts` | Maps CRUD with atomic writes (unique temp file, rename), serialized per map (`withMapLock` / `updateMap`) so parallel MCP calls and autosave never lose updates. |
 | `mcp-server.ts` | **Inbound** MCP server exposing mind-map tools to AI clients, including surgical node edits (see [MCP.md](MCP.md)). |
 | `mcp-stdio.ts` | stdio entry point for the inbound MCP server. |
+| `presence.ts` | In-memory "what the user is looking at" (open map, selection, hoist), reported by the tab via `POST /api/view` and read by the `get_active_view` MCP tool. |
 | `events.ts` | In-process pub/sub for external map edits (`map-ops` batches), fanned out to browser tabs over SSE (`GET /api/events`). |
 
 The server imports shared types from `src/model/` only; it has no other dependency on the

@@ -94,6 +94,10 @@ interface StoreState {
   searchQuery: string;
   /** A search query pinned as a canvas filter (⇧Enter) — non-matches dim until Esc. */
   filterQuery: string | null;
+  /** Hand-drawn theme (per-viewer preference in localStorage, not map data). */
+  sketch: boolean;
+  /** Bumped when node measurements are invalidated (font change) — layout re-runs. */
+  measureEpoch: number;
 
   loadMap(map: MapFile): void;
   closeMap(): void;
@@ -153,6 +157,8 @@ interface StoreState {
   setInspectorOpen(open: boolean): void;
   toggleInspector(): void;
   setHoist(id: string | null): void;
+  setSketch(on: boolean): void;
+  bumpMeasureEpoch(): void;
   /** Open the search panel, seeding the input from a pinned filter if one is active. */
   openSearch(): void;
   closeSearch(): void;
@@ -213,6 +219,8 @@ export const useStore = create<StoreState>((set, get) => ({
   searchOpen: false,
   searchQuery: '',
   filterQuery: null,
+  sketch: false,
+  measureEpoch: 0,
 
   loadMap(map) {
     const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
@@ -542,6 +550,14 @@ export const useStore = create<StoreState>((set, get) => ({
 
   setHoist(id) {
     set({ hoistId: id });
+  },
+
+  setSketch(on) {
+    set({ sketch: on });
+  },
+
+  bumpMeasureEpoch() {
+    set((s) => ({ measureEpoch: s.measureEpoch + 1 }));
   },
 
   openSearch() {

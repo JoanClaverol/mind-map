@@ -66,7 +66,7 @@ Leave this running and the browser tab open — that's your half of the co-editi
 just one:
 
 ```bash
-mindmap config claude-code     # or: claude-desktop | codex | opencode
+mindmap config claude-code     # or: claude-desktop | codex | opencode | omp
 ```
 
 Each client offers two transports — **pick the right one for what you want**:
@@ -104,6 +104,14 @@ claude mcp add mindmap -- node /path/to/mind-map/bin/mindmap.js stdio
 url = "http://localhost:5454/mcp"      # live co-editing
 # or stdio:  command = "node"  /  args = ["/path/to/mind-map/bin/mindmap.js", "stdio"]
 ```
+
+**omp (oh-my-pi)** — add to `~/.omp/agent/mcp.json` (all projects) or `.omp/mcp.json` (one project):
+
+```json
+{ "mcpServers": { "mindmap": { "type": "http", "url": "http://localhost:5454/mcp" } } }
+```
+
+Or skip the config entirely with `mindmap omp` (see below).
 
 **opencode** — add to `opencode.json` in your project:
 
@@ -156,6 +164,8 @@ run an ephemeral instance from that directory:
 cd ~/your/other/project
 mindmap claude    # serve ./mindmaps on a free port, open the browser,
                   # launch Claude Code with the tools injected; teardown on exit
+mindmap omp       # same, launching omp (oh-my-pi); the server is wired in via
+                  # .omp/mcp.json for the session and restored on exit
 mindmap up        # same server, foreground — prints the URL + config so you can
                   # connect any other client yourself
 ```
@@ -170,6 +180,7 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
 
 | | Tools |
 | --- | --- |
+| See the user's screen | `get_active_view` — the open map + selected node, so "this branch" just works; `open_map` — put a map on the user's screen |
 | Read | `read_map`, `read_map_markdown` (id-annotated + arrows), `get_subtree`, `list_maps` |
 | Search | `find_nodes` — locate ideas by text and/or tags across one or **all** maps without reading them whole |
 | Edit nodes | `add_nodes`, `edit_node`, `move_node`, `delete_node` |
@@ -178,7 +189,8 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
 | Connect ideas | `add_relationship`, `edit_relationship`, `delete_relationship` — labeled arrows between any two nodes, across trees |
 | Group ideas | `add_group`, `edit_group`, `delete_group` — dashed boundaries around sets of nodes, even from different parents |
 | Batch | `apply_ops` — up to 50 edits, atomic on disk, **one undo step** for you |
-| Create | `create_map_from_outline` |
+| Export & look | `export_map` — renders through your open tab, saves `exports/*.png|svg` next to the maps, and hands the PNG back so the AI can *see* its layout |
+| Create & lay out | `create_map_from_outline` (opens it live, picks a layout), `set_layout`; per-branch `style` via `set_node_meta` |
 
 ## Features
 
@@ -196,6 +208,10 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
   branches), jump with Enter, or pin the query as a filter that dims everything else.
 - **Hoist** (`⌘.`) — any branch becomes the temporary root, Workflowy-style: navigate,
   edit, and fit within just that subtree; Esc brings the full map back.
+- **Sketch look** (`⇧D`) — Excalidraw-style hand-drawn boxes, edges, and arrows
+  ([roughjs](https://roughjs.com)) with the handwritten Kalam font; stable wobble per shape.
+- **Export** (`⌘E` PNG, `⌘⇧E` SVG) — self-contained images (fonts embedded), also
+  available to your AI via `export_map`, which hands the PNG back so it can see its work.
 - **Inline markdown** in node text: bold, italic, code, strike, highlight, links.
 - **Node metadata, quietly** — an emoji before the text, a subtle color tint from a small
   muted palette, a dot for hidden notes, searchable tags; all editable in the `⇧I`
@@ -232,6 +248,8 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `⌘C` / `⌘X` / `⌘V` | Copy / cut branch as markdown outline · paste outline as subtree |
 | `⌘Z` / `⌘⇧Z` | Undo / redo |
 | `⌘=` / `⌘-` / `⌘0` | Zoom in / out / fit |
+| `⇧D` | Toggle the **sketch look** — hand-drawn strokes and a handwritten font, Excalidraw-style (remembered per browser; exports follow it) |
+| `⌘E` / `⌘⇧E` | **Export** the map as PNG / SVG (what you see — hoist and pinned filters apply) |
 | `Esc` | Back out one layer: clear the pinned filter → exit hoist → back to gallery |
 | `?` | Keyboard cheatsheet — every bound command, generated from the live keymap (works in the gallery too) |
 
@@ -248,8 +266,8 @@ label, `C` cycles its color, `⇧G` re-picks its members, `Delete` removes it (n
 `Esc` deselects.
 
 > Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧G` groups, `⇧I` opens the inspector, `⇧N`
-> adds a floating tree, and `⇧S`/`⇧B` switch structure, typing a *capital* A/B/G/H/I/J/K/L/N/S
-> won't trigger type-to-edit — press `Space` to edit instead, or unbind them via
+> adds a floating tree, `⇧D` toggles the sketch look, and `⇧S`/`⇧B` switch structure, typing
+> a *capital* A/B/D/G/H/I/J/K/L/N/S won't trigger type-to-edit — press `Space` to edit instead, or unbind them via
 > `localStorage.keymap`.
 
 ## Gallery
@@ -276,7 +294,9 @@ human-readable, easy to diff and back up. There's no database. The schema is doc
 [ARCHITECTURE.md](ARCHITECTURE.md#data-model). Your own map files stay on your machine; only
 the demo `welcome.json` is committed to this repo. Per-project sessions store their maps in
 that project's `mindmaps/` folder instead. Override the directory anytime with the
-`MAPS_DIR` env var (and the port with `PORT`).
+`MAPS_DIR` env var (and the port with `PORT`). The server listens on `127.0.0.1` only and
+refuses non-localhost `Host`/`Origin` headers, so other machines and web pages can't reach
+your maps.
 
 ## Troubleshooting
 

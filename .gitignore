@@ -9,3 +9,6 @@ dist/
 maps/*.json
 !maps/welcome.json
 !maps/folders.json
+
+# image exports (export_map / ⌘E)
+maps/exports/

@@ -10,6 +10,8 @@ import { Gallery } from './gallery/Gallery';
 import { markOpened } from './gallery/recents';
 import { flushNow, initAutosave } from './state/autosave';
 import { initLiveSync } from './state/livesync';
+import { applySketchTheme, loadSketchPref } from './canvas/sketch';
+import { initPresence } from './state/presence';
 import { useStore } from './state/store';
 
 function useHashRoute(): string {
@@ -87,6 +89,12 @@ function Editor({ mapId }: { mapId: string }) {
 
 export function App() {
   const route = useHashRoute();
+  useEffect(() => initPresence(), []);
+  useEffect(() => {
+    const on = loadSketchPref();
+    useStore.getState().setSketch(on);
+    if (on) applySketchTheme(true, () => useStore.getState().bumpMeasureEpoch());
+  }, []);
   const match = route.match(/^#\/map\/([A-Za-z0-9_-]+)/);
   return (
     <div className="app">

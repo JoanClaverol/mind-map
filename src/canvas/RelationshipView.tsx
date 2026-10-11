@@ -1,6 +1,8 @@
 import type { Rect } from '../layout/layout';
 import type { Relationship } from '../model/types';
+import { useStore } from '../state/store';
 import { relationshipGeometry } from './relationshipPath';
+import { roughStroke } from './sketch';
 
 interface RelationshipViewProps {
   rel: Relationship;
@@ -12,6 +14,7 @@ interface RelationshipViewProps {
 }
 
 export function RelationshipView({ rel, from, to, selected, onSelect, onEdit }: RelationshipViewProps) {
+  const sketch = useStore((s) => s.sketch);
   const { d, mid } = relationshipGeometry(from, to);
   const markerEnd = `url(#${selected ? 'rel-arrow-selected' : 'rel-arrow'})`;
   const labelWidth = rel.label ? 14 + 7 * rel.label.length : 0;
@@ -27,7 +30,11 @@ export function RelationshipView({ rel, from, to, selected, onSelect, onEdit }: 
     <g>
       {/* Fat invisible path so the thin arrow is easy to click. */}
       <path className="rel-hit" d={d} onMouseDown={press} onDoubleClick={dbl} />
-      <path className={`relationship${selected ? ' selected' : ''}`} d={d} markerEnd={markerEnd} />
+      <path
+        className={`relationship${selected ? ' selected' : ''}`}
+        d={sketch ? roughStroke(d, 0.7) : d}
+        markerEnd={markerEnd}
+      />
       {rel.label && (
         <g
           className={`rel-label${selected ? ' selected' : ''}`}

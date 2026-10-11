@@ -5,8 +5,10 @@ import {
   MAX_NOTE_LEN,
   MAX_TAGS,
   MAX_TAG_LEN,
+  LAYOUT_STYLES,
   NODE_COLORS,
   type BranchStyle,
+  type LayoutStyle,
   type Doc,
   type DocNode,
   type FileNode,
@@ -46,6 +48,7 @@ export type MapOp =
   | { type: 'delete_group'; groupId: string }
   | { type: 'create_tree'; root: FileNode; pos: Position } // root carries FINAL ids
   | { type: 'move_tree'; rootId: string; pos: Position }
+  | { type: 'set_layout'; layout: LayoutStyle } // the map-level structure (⇧S)
   | { type: 'detach_node'; nodeId: string; pos: Position }
   | {
       // Partial-field metadata update: undefined = leave untouched, null = clear.
@@ -108,6 +111,12 @@ export function applyDocOp(doc: Doc, op: MapOp): OpResult {
       return detachNode(doc, op.nodeId, op.pos);
     case 'set_node_meta':
       return setNodeMeta(doc, op);
+    case 'set_layout':
+      if (!LAYOUT_STYLES.includes(op.layout)) {
+        return { ok: false, reason: `unknown layout "${op.layout}" — valid: ${LAYOUT_STYLES.join(', ')}` };
+      }
+      doc.layout = op.layout;
+      return { ok: true };
   }
 }
 

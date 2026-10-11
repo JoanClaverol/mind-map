@@ -25,9 +25,35 @@ The MCP server is available in two forms:
 - **HTTP/SSE** (when the app is running — `pnpm dev`, `pnpm start`, or `mindmap up`): `http://localhost:5454/mcp` (`mindmap up` prints its own per-session URL).
 - **stdio** (for clients that spawn a process): `mindmap stdio [--maps DIR]`, or `node --import tsx server/mcp-stdio.ts` from the project root.
 
-Run `mindmap config <client>` for ready-to-paste config (claude-code, claude-desktop, codex, opencode). There is no authentication; it is intended for local use only.
+Run `mindmap config <client>` for ready-to-paste config (claude-code, claude-desktop, codex, opencode, omp). There is no authentication; the server binds loopback only and rejects requests whose `Host`/`Origin` isn't localhost.
+
+Only the HTTP transport sees the user's browser: `get_active_view` and `open_map` need it, and stdio edits land on disk without appearing live.
+
+## Start here: what is the user looking at?
+
+When the user says "this map", "this node", "here", or "the selected branch", call `get_active_view` first — don't guess from `list_maps`. When you create or start editing a map the user should watch, it opens on their screen (`create_map_from_outline` does this by default; otherwise call `open_map`).
 
 ## Tools
+
+### `get_active_view`
+
+- Arguments: `{ depth?: number }` (levels of the selected branch to include, default 2)
+- Returns the map open in the user's browser tab (or "gallery"), its layout, the hoisted branch if any, and the selected node as an id-annotated outline. HTTP transport only.
+
+### `open_map`
+
+- Arguments: `{ map_id: string, node_id?: string }`
+- Navigates every open browser tab to the map, optionally selecting a node. Use it to put your work in front of the user.
+
+### `set_layout`
+
+- Arguments: `{ map_id: string, layout: "right" | "balanced" | "down" | "timeline" }`
+- The whole map's structure: logic chart, both-sides map, org chart, Now/Next/Later roadmap. Undoable in the browser. For one branch, use `set_node_meta` `style`.
+
+### `export_map`
+
+- Arguments: `{ map_id: string, format?: "png" | "svg" }`
+- Renders the map through the user's open browser tab (navigating it there), saves `<maps dir>/exports/<title>-<id>.<ext>`, and returns the path. PNG also returns the image — **look at it** after building or restructuring a map to catch crowding, overlapping arrows, or a lopsided layout, then fix with `set_layout` / `move_node`. HTTP transport only; errors after 15s if no tab is open.
 
 ### `get_project_context`
 
@@ -114,7 +140,8 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 
 ### `set_node_meta`
 
-- Arguments: `{ map_id: string, node_id: string, color?: string, icon?: string, note?: string, tags?: string[] }`
+- Arguments: `{ map_id: string, node_id: string, color?: string, icon?: string, note?: string, tags?: string[], style?: "right" | "down" | "timeline" | "inherit" }`
+- `style` makes that subtree render in its own structure (e.g. a roadmap branch inside a logic chart); `"inherit"` clears it.
 - Partial update: absent fields are left untouched. Clearing: `color: "none"`, `icon: ""`, `note: ""`, `tags: []` (the array always replaces the whole list).
 - `color` is one of the palette names `sage | mist | clay | sand | rose` — rendered as a subtle tint. `icon` is a leading emoji (max 16 chars) shown before the text. `note` (max 2000 chars) is hidden behind the node — a dot marks it on canvas; the user reads it in the inspector. `tags` (max 8 × 24 chars) are searchable via `find_nodes`.
 - Suggested conventions: ❓ + a note for open questions, ✅ or `sage` for decided, `rose` for blocked/risky — tell the user what your markings mean.
@@ -181,9 +208,10 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 
 ### `create_map_from_outline`
 
-- Arguments: `{ title: string, markdown?: string }`
-- Parses the markdown into a tree and saves a new map.
-- Returns the new map id.
+- Arguments: `{ title: string, markdown?: string, layout?: "right" | "balanced" | "down" | "timeline", open?: boolean }`
+- Parses the markdown into a tree and saves a new map. Several top-level bullets become children of a root named after the title; a single top-level bullet whose text equals the title becomes the root itself.
+- Opens the map in the user's browser unless `open: false`.
+- Returns the new map id and the outline annotated with node ids, ready for follow-up `apply_ops` (metadata, arrows, groups).
 
 ## Map file format (`MapFile`)
 
@@ -273,8 +301,10 @@ This will create a root node "Trip to Japan" with four children, each with their
 ### Create a brand new map from a conversation
 
 1. Call `get_project_context` if you need the schema.
-2. Compose a markdown outline yourself and call `create_map_from_outline`.
-3. Read the returned map id and tell the user.
+2. Compose a markdown outline yourself and call `create_map_from_outline` (pick a `layout` that fits: `timeline` for plans, `down` for hierarchies, `balanced` for brainstorms). It opens on the user's screen.
+3. Using the returned ids, decorate in ONE `apply_ops` batch: icons/colors/notes/tags via `set_node_meta`, arrows, groups.
+4. Optionally `export_map` to see the result and tidy anything cramped.
+5. Tell the user what you built and what your markings mean.
 
 ### Co-edit a map with the user (preferred for existing maps)
 

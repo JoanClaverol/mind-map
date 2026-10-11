@@ -961,3 +961,58 @@ body,
 .toast.success {
   background: #5d9272;
 }
+
+/*
+ * Sketch theme (⇧D): Excalidraw-style hand-drawn strokes (roughjs, see
+ * canvas/sketch.ts) + a handwritten font. Node text CSS changes here are
+ * picked up by the offscreen measurer too (same .node-text class), and
+ * sketch.ts drops the measure cache when the theme or font changes.
+ */
+.sketch-fill {
+  stroke: none !important;
+}
+
+.sketch-outline {
+  fill: none !important;
+}
+
+:root[data-theme='sketch'] {
+  --bg: #fdfcf9;
+  --edge: #8f877a;
+  --node-border: #6f675c;
+  --sketch-font: 'Kalam', 'Comic Sans MS', cursive;
+}
+
+:root[data-theme='sketch'] .node-text,
+:root[data-theme='sketch'] .node-editor {
+  font-family: var(--sketch-font);
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+:root[data-theme='sketch'] .node-rect {
+  stroke: var(--node-border);
+  stroke-width: 1.3;
+}
+
+:root[data-theme='sketch'] .node-rect.selected {
+  stroke: var(--node-selected);
+  stroke-width: 2;
+}
+
+:root[data-theme='sketch'] .edge {
+  stroke-width: 1.3;
+}
+
+/* Rough strokes already read as hand-drawn — dashes on top just look noisy. */
+:root[data-theme='sketch'] .relationship {
+  stroke-dasharray: none;
+  stroke-width: 1.3;
+}
+
+:root[data-theme='sketch'] .rel-label text,
+:root[data-theme='sketch'] .group-label text,
+:root[data-theme='sketch'] .collapse-badge text {
+  font-family: var(--sketch-font);
+  font-size: 12px;
+}

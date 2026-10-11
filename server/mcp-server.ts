@@ -6,8 +6,21 @@ import { z } from 'zod';
 import { denormalize, normalize, serializeFloating, subtreeIds } from '../src/model/doc';
 import { branchToMarkdown, markdownToBranches } from '../src/model/markdown';
 import { applyDocOp, assignIds, type MapOp } from '../src/model/ops';
-import { NODE_COLORS, SCHEMA_VERSION, type Doc, type FileNode, type MapFile, type NodeColor } from '../src/model/types';
+import {
+  BRANCH_STYLES,
+  LAYOUT_STYLES,
+  NODE_COLORS,
+  SCHEMA_VERSION,
+  type BranchStyle,
+  type Doc,
+  type FileNode,
+  type LayoutStyle,
+  type MapFile,
+  type NodeColor,
+} from '../src/model/types';
 import { publish } from './events';
+import { requestExport, saveExport } from './exports';
+import { getActiveView } from './presence';
 import * as storage from './storage';
 
 function errorResult(message: string): { content: Array<{ type: 'text'; text: string }>; isError: true } {
@@ -18,8 +31,10 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function buildMapFile(title: string, branches: FileNode[]): MapFile {
-  const root: FileNode = { id: nanoid(12), text: title, children: branches };
+function buildMapFile(title: string, branches: FileNode[], layout: LayoutStyle = 'right'): MapFile {
+  // A lone top-level bullet that repeats the title IS the central topic — don't nest it under a duplicate.
+  const lone = branches.length === 1 && branches[0].text.trim().toLowerCase() === title.toLowerCase();
+  const root: FileNode = lone ? branches[0] : { id: nanoid(12), text: title, children: branches };
   assignIds(root);
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -27,7 +42,7 @@ function buildMapFile(title: string, branches: FileNode[]): MapFile {
     title,
     createdAt: nowIso(),
     updatedAt: nowIso(),
-    layout: 'right',
+    layout,
     root,
   };
 }
@@ -44,23 +59,27 @@ async function mutateMap(
   ops: MapOp[],
 ): Promise<{ map: MapFile } | { error: string; failedIndex?: number }> {
   if (!storage.isValidId(mapId)) return { error: 'invalid map id' };
-  const map = await storage.readMap(mapId);
-  if (!map) return { error: 'map not found' };
-  const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
-  for (let i = 0; i < ops.length; i++) {
-    const result = applyDocOp(doc, ops[i]);
-    if (!result.ok) return { error: result.reason, failedIndex: i };
-  }
-  const updated: MapFile = { ...map, root: denormalize(doc), updatedAt: nowIso() };
-  // Relationship/group/floating changes flow through; omit when empty to keep files minimal.
-  if (doc.relationships.length) updated.relationships = doc.relationships;
-  else delete updated.relationships;
-  if (doc.groups.length) updated.groups = doc.groups;
-  else delete updated.groups;
-  const floating = serializeFloating(doc);
-  if (floating) updated.floating = floating;
-  else delete updated.floating;
-  await storage.writeMap(updated);
+  type Failure = { error: string; failedIndex?: number };
+  const result = await storage.updateMap<MapFile | Failure>(mapId, (map) => {
+    const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
+    for (let i = 0; i < ops.length; i++) {
+      const r = applyDocOp(doc, ops[i]);
+      if (!r.ok) return { error: r.reason, failedIndex: i };
+    }
+    const updated: MapFile = { ...map, layout: doc.layout, root: denormalize(doc), updatedAt: nowIso() };
+    // Relationship/group/floating changes flow through; omit when empty to keep files minimal.
+    if (doc.relationships.length) updated.relationships = doc.relationships;
+    else delete updated.relationships;
+    if (doc.groups.length) updated.groups = doc.groups;
+    else delete updated.groups;
+    const floating = serializeFloating(doc);
+    if (floating) updated.floating = floating;
+    else delete updated.floating;
+    return updated;
+  });
+  if (!result) return { error: 'map not found' };
+  if ('error' in result) return result;
+  const updated = result;
   publish({ kind: 'map-ops', mapId, ops });
   return { map: updated };
 }
@@ -163,6 +182,14 @@ interface FileNode {
 
 All map files are stored as pretty-printed JSON in the maps/ directory.`;
   return `${mcpGuide}\n\n---\n\n# Schema reference\n\n${schema}`;
+}
+
+const STYLE_CHOICES = ['inherit', ...BRANCH_STYLES] as [string, ...string[]];
+const styleDescription =
+  'Branch structure override for this subtree: right (logic chart), down (org chart), timeline (Now/Next/Later roadmap); "inherit" clears';
+
+function toStyle(style: string | undefined): BranchStyle | null | undefined {
+  return style === undefined ? undefined : style === 'inherit' ? null : (style as BranchStyle);
 }
 
 export function createMcpServer(): McpServer {
@@ -474,7 +501,7 @@ export function createMcpServer(): McpServer {
     'set_node_meta',
     {
       description:
-        'Sets node metadata: color (one of sage/mist/clay/sand/rose — "none" clears), icon (a leading emoji; "" clears), note (longer hidden text shown in the inspector; "" clears), tags (searchable labels; [] clears, the array replaces the whole list). Absent fields are left untouched. Use color/icon to mark status (e.g. ❓ open question, sage = decided), notes for detail that would clutter the canvas. The edit appears live in an open browser tab and is undoable there.',
+        'Sets node metadata: style (the subtree\'s layout structure — e.g. make one branch an org chart or roadmap), color (one of sage/mist/clay/sand/rose — "none" clears), icon (a leading emoji; "" clears), note (longer hidden text shown in the inspector; "" clears), tags (searchable labels; [] clears, the array replaces the whole list). Absent fields are left untouched. Use color/icon to mark status (e.g. ❓ open question, sage = decided), notes for detail that would clutter the canvas. The edit appears live in an open browser tab and is undoable there.',
       inputSchema: z
         .object({
           map_id: z.string().describe('The map id'),
@@ -483,10 +510,17 @@ export function createMcpServer(): McpServer {
           icon: z.string().optional().describe('Leading emoji/glyph; empty string clears'),
           note: z.string().optional().describe('Longer hidden text; empty string clears'),
           tags: z.array(z.string()).optional().describe('Replaces the tag list; [] clears'),
+          style: z.enum(STYLE_CHOICES).optional().describe(styleDescription),
         })
-        .refine((a) => a.color !== undefined || a.icon !== undefined || a.note !== undefined || a.tags !== undefined, {
-          message: 'provide at least one of color/icon/note/tags',
-        }),
+        .refine(
+          (a) =>
+            a.color !== undefined ||
+            a.icon !== undefined ||
+            a.note !== undefined ||
+            a.tags !== undefined ||
+            a.style !== undefined,
+          { message: 'provide at least one of color/icon/note/tags/style' },
+        ),
     },
     async (args) => {
       const r = await mutateMap(args.map_id, [
@@ -497,6 +531,7 @@ export function createMcpServer(): McpServer {
           icon: args.icon === undefined ? undefined : args.icon || null,
           note: args.note === undefined ? undefined : args.note || null,
           tags: args.tags === undefined ? undefined : args.tags.length ? args.tags : null,
+          style: toStyle(args.style),
         },
       ]);
       if ('error' in r) return errorResult(r.error);
@@ -686,7 +721,9 @@ export function createMcpServer(): McpServer {
       icon: z.string().optional(),
       note: z.string().optional(),
       tags: z.array(z.string()).optional(),
+      style: z.enum(STYLE_CHOICES).optional(),
     }),
+    z.object({ op: z.literal('set_layout'), layout: z.enum(LAYOUT_STYLES as [LayoutStyle, ...LayoutStyle[]]) }),
   ]);
 
   server.registerTool(
@@ -811,8 +848,13 @@ export function createMcpServer(): McpServer {
               icon: item.icon === undefined ? undefined : item.icon || null,
               note: item.note === undefined ? undefined : item.note || null,
               tags: item.tags === undefined ? undefined : item.tags.length ? item.tags : null,
+              style: toStyle(item.style),
             });
             summaries.push(`[${i}] set_node_meta ${item.node_id}`);
+            break;
+          case 'set_layout':
+            ops.push({ type: 'set_layout', layout: item.layout });
+            summaries.push(`[${i}] set_layout ${item.layout}`);
             break;
         }
       }
@@ -828,20 +870,143 @@ export function createMcpServer(): McpServer {
   server.registerTool(
     'create_map_from_outline',
     {
-      description: 'Creates a new map from a markdown outline. The outline can be a nested list of bullets (-, *, +).',
+      description:
+        'Creates a new map from a markdown outline (nested bullets: -, *, +; two-space indent per level). A single top-level bullet becomes the central topic; several become its children under a root named after the title. By default the map opens on the user\'s screen. Returns the outline annotated with node ids for follow-up edits.',
       inputSchema: z.object({
         title: z.string().describe('Title for the new map'),
         markdown: z.string().optional().describe('Markdown outline to use as the map content'),
+        layout: z
+          .enum(LAYOUT_STYLES as [LayoutStyle, ...LayoutStyle[]])
+          .optional()
+          .describe('right (logic chart, default), balanced (both sides), down (org chart), timeline (roadmap)'),
+        open: z.boolean().optional().describe('Open it in the user\'s browser tab (default true)'),
       }),
     },
     async (args) => {
       const title = args.title.trim();
       if (!title) return errorResult('title is required');
       const branches = args.markdown ? markdownToBranches(args.markdown) : [];
-      const map = buildMapFile(title, branches);
+      const map = buildMapFile(title, branches, args.layout);
       await storage.writeMap(map);
       publish({ kind: 'map-created', mapId: map.id, title: map.title });
-      return { content: [{ type: 'text', text: `Created map "${map.title}" (id: ${map.id})` }] };
+      if (args.open !== false) publish({ kind: 'open-map', mapId: map.id });
+      return {
+        content: [
+          { type: 'text', text: `Created map "${map.title}" (id: ${map.id})\n${outlineWithIds([map.root])}` },
+        ],
+      };
+    },
+  );
+
+  server.registerTool(
+    'set_layout',
+    {
+      description:
+        'Sets the whole map\'s layout structure: right (logic chart), balanced (branches on both sides of the root), down (org chart), timeline (Now/Next/Later roadmap). For a single branch, use set_node_meta style instead. Undoable in the browser.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        layout: z.enum(LAYOUT_STYLES as [LayoutStyle, ...LayoutStyle[]]),
+      }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [{ type: 'set_layout', layout: args.layout }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Layout set to ${args.layout}` }] };
+    },
+  );
+
+  server.registerTool(
+    'get_active_view',
+    {
+      description:
+        'What the user is looking at right now in the browser: the open map (or the gallery), the selected node with its branch, and any hoisted branch. Call this first when the user says "this map", "this node", "here", or "the selected branch". Only available over the HTTP transport with the app open.',
+      inputSchema: z.object({
+        depth: z.number().int().min(0).max(10).optional().describe('Levels of the selected branch to include (default 2)'),
+      }),
+    },
+    async (args) => {
+      const view = getActiveView();
+      if (!view) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No browser tab has reported a view to this server (no tab open, or this is a stdio server — use list_maps).',
+            },
+          ],
+        };
+      }
+      const age = Math.round((Date.now() - view.at) / 1000);
+      if (!view.mapId) return { content: [{ type: 'text', text: `The user is in the map gallery (reported ${age}s ago).` }] };
+      const map = await storage.readMap(view.mapId);
+      if (!map) return { content: [{ type: 'text', text: `The open map ${view.mapId} no longer exists on disk.` }] };
+      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
+      const lines = [`Open map: "${map.title}" (id: ${map.id}, layout: ${doc.layout}, reported ${age}s ago)`];
+      if (view.hoistId && doc.nodes[view.hoistId]) {
+        lines.push(`Hoisted on: ${view.hoistId} "${doc.nodes[view.hoistId].text}" (the user only sees this branch)`);
+      }
+      const sel = view.selectedId && doc.nodes[view.selectedId] ? view.selectedId : null;
+      if (sel) {
+        lines.push(`Selected node: ${sel}`, '', branchToMarkdown(doc, sel, { ids: true, meta: true, maxDepth: args.depth ?? 2 }));
+      } else {
+        lines.push('Nothing selected.');
+      }
+      return { content: [{ type: 'text', text: lines.join('\n') }] };
+    },
+  );
+
+  server.registerTool(
+    'open_map',
+    {
+      description:
+        'Shows a map on the user\'s screen: every open browser tab navigates to it. Use after creating or before editing a map the user should watch. node_id also selects that node.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        node_id: z.string().optional().describe('Node to select once it opens'),
+      }),
+    },
+    async (args) => {
+      if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
+      const map = await storage.readMap(args.map_id);
+      if (!map) return errorResult('map not found');
+      publish({ kind: 'open-map', mapId: map.id, nodeId: args.node_id });
+      return { content: [{ type: 'text', text: `Opened "${map.title}" in the browser` }] };
+    },
+  );
+
+  server.registerTool(
+    'export_map',
+    {
+      description:
+        'Renders a map to an image through the user\'s open browser tab (it navigates there if needed) and saves it under the maps folder in exports/. PNG returns the image itself, so you can LOOK at the layout you built — use it to check readability, crowding, and balance. SVG is a scalable file for sharing. Exports what the tab shows: a hoisted branch or pinned filter applies. HTTP transport with the app open only.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        format: z.enum(['png', 'svg']).optional().describe('png (default) or svg'),
+      }),
+    },
+    async (args) => {
+      if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
+      const map = await storage.readMap(args.map_id);
+      if (!map) return errorResult('map not found');
+      const format = args.format ?? 'png';
+      let result;
+      try {
+        result = await requestExport(map.id, format);
+      } catch (err) {
+        return errorResult(err instanceof Error ? err.message : String(err));
+      }
+      const slug = map.title.normalize('NFKD').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-').toLowerCase();
+      const file = await saveExport(storage.mapsDir(), `${slug || 'map'}-${map.id}`, result);
+      const text = `Exported "${map.title}" to ${file}`;
+      if (result.format === 'png') {
+        return {
+          content: [
+            { type: 'text', text },
+            { type: 'image', data: result.data, mimeType: 'image/png' },
+          ],
+        };
+      }
+      return { content: [{ type: 'text', text }] };
     },
   );
 
