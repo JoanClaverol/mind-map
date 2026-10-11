@@ -180,7 +180,9 @@ app.put('/api/maps/:id', async (c) => {
     if (!next.viewport && onDisk.viewport) next.viewport = onDisk.viewport;
     return next;
   });
-  if (!written) await storage.writeMap({ ...incoming, updatedAt }); // file vanished — recreate it
+  // Never create a map from a PUT: a stale tab (deleted map, or a tab left over
+  // from another session on this port) would resurrect it or plant it here.
+  if (!written) return c.json({ error: 'map not found' }, 404);
   return c.json({ updatedAt });
 });
 

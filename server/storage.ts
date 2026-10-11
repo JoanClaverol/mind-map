@@ -46,7 +46,8 @@ export async function listMaps(): Promise<{ maps: MapMeta[]; warnings: string[] 
     if (!entry.endsWith('.json') || entry === 'folders.json' || entry.startsWith('.')) continue;
     try {
       const raw = JSON.parse(await fs.readFile(path.join(MAPS_DIR, entry), 'utf8'));
-      const map = migrateMapFile(raw);
+      const map = withFileId(migrateMapFile(raw), entry.slice(0, -'.json'.length));
+      if (!isValidId(map.id)) throw new Error('file name is not a valid map id');
       maps.push({
         id: map.id,
         title: map.title,
@@ -163,10 +164,20 @@ export async function updateMap<R extends MapFile | { error: string }>(
   });
 }
 
+/**
+ * The file name is the map's identity: maps are opened by `<id>.json`, so a
+ * copied or renamed file (or the demo welcome.json) whose stored `id` differs
+ * would be listed but never openable. The stored id self-heals on next save.
+ */
+function withFileId(map: MapFile, stem: string): MapFile {
+  if (map.id !== stem) map.id = stem;
+  return map;
+}
+
 export async function readMap(id: string): Promise<MapFile | null> {
   try {
     const raw = JSON.parse(await fs.readFile(mapPath(id), 'utf8'));
-    return migrateMapFile(raw);
+    return withFileId(migrateMapFile(raw), id);
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;

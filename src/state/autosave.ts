@@ -48,9 +48,16 @@ async function flush(): Promise<void> {
   try {
     await api.saveMap(map);
     useStore.getState().markSaved(rev);
-  } catch {
+  } catch (err) {
     const now = useStore.getState();
     now.markSaveError();
+    if (err instanceof Error && err.message === 'map not found') {
+      // Deleted elsewhere, or this tab outlived its session on this port: the
+      // server refuses to recreate it — retrying would only spam. Copy (⌘C) what
+      // you need from this tab before leaving.
+      now.addToast('error', 'This map no longer exists on the server — changes here are not saved');
+      return;
+    }
     now.addToast('error', 'Autosave failed — retrying');
     schedule(RETRY_MS);
   }

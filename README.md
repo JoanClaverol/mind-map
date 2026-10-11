@@ -334,6 +334,7 @@ your maps.
 | Claude Desktop says it can't start the server | GUI apps don't inherit your shell PATH — use the absolute Node path that `mindmap config claude-desktop` prints. |
 | Port 5454 is busy | Another instance owns it. Stop it, or run with `PORT=5460 pnpm start` and point the client at the new port. `mindmap up` picks a free port automatically. |
 | Browser tab shows "Autosave failed" after updating | The tab predates a schema upgrade — reload it. |
+| Tab says "This map no longer exists on the server" | The map was deleted elsewhere, or the tab is left over from an earlier session that used the same port (per-project sessions reuse 5460+). The server refuses to recreate maps from a tab — copy what you need (`⌘C`) and close the tab. |
 | Two people/tools editing the same map | It's a single-user local tool: the browser wins conflicts, and simultaneous browser tabs on one map are last-write-wins. |
 
 ## Documentation

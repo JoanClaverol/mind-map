@@ -130,3 +130,13 @@ describe('schema v2 on disk', () => {
     expect(maps.find((m) => m.id === 'v1floatcount')?.nodeCount).toBe(4); // 2 main + 2 floating
   });
 });
+
+describe('file name is the map id', () => {
+  it('lists and opens a map whose stored id differs from its file name', async () => {
+    const storage = await freshStorage();
+    writeFileSync(path.join(mapsDir, 'welcome.json'), JSON.stringify(makeMap('welcome-example')));
+    const { maps } = await storage.listMaps();
+    expect(maps.map((m) => m.id)).toEqual(['welcome']);
+    expect((await storage.readMap('welcome'))?.id).toBe('welcome');
+  });
+});

@@ -15,7 +15,7 @@
  * which is added to .git/info/exclude — never to the project's .gitignore.
  */
 import { execFileSync, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, rmSync, rmdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync, openSync, rmSync, rmdirSync } from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,15 +32,23 @@ function fail(message) {
 }
 
 function findFreePort(preferred) {
-  const tryPort = (port) =>
+  // On macOS a wildcard (0.0.0.0) bind SUCCEEDS while 127.0.0.1:port is taken —
+  // which is exactly what standalone.ts binds — so a port is free only if both
+  // the loopback and the wildcard address can bind it (and ::1, where it exists:
+  // Vite dev servers listen there).
+  const canBind = (port, host) =>
     new Promise((resolve) => {
       const srv = net.createServer();
-      srv.once('error', () => resolve(null));
-      srv.once('listening', () => srv.close(() => resolve(port)));
-      // Probe the wildcard address: it fails if the port is taken on ANY interface
-      // (standalone.ts binds 127.0.0.1; another app may hold 0.0.0.0).
-      srv.listen(port, '0.0.0.0');
+      srv.once('error', (err) => resolve(err.code === 'EADDRNOTAVAIL' || err.code === 'EAFNOSUPPORT'));
+      srv.once('listening', () => srv.close(() => resolve(true)));
+      srv.listen(port, host);
     });
+  const tryPort = async (port) => {
+    for (const host of ['127.0.0.1', '0.0.0.0', '::1']) {
+      if (!(await canBind(port, host))) return null;
+    }
+    return port;
+  };
   return (async () => {
     for (let port = preferred; port < preferred + 100; port++) {
       if (await tryPort(port)) return port;
@@ -71,11 +79,14 @@ function excludeFromGit(entry) {
 
 async function waitUntilReady(port, child) {
   const deadline = Date.now() + 10_000;
+  const want = realpathSync(mapsDir);
   while (Date.now() < deadline) {
     if (child.exitCode !== null) fail(`server exited early (code ${child.exitCode}) — see .mindmap/server.log`);
     try {
-      const res = await fetch(`http://localhost:${port}/api/maps`);
-      if (res.ok) return;
+      // Ready = OUR server answering: a different session racing for the same
+      // port must never be mistaken for this one (its maps are another project's).
+      const res = await fetch(`http://localhost:${port}/api/info`);
+      if (res.ok && (await res.json()).mapsDir === want) return;
     } catch {
       // not up yet
     }

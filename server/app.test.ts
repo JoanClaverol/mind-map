@@ -93,6 +93,13 @@ describe('PUT /api/maps/:id', () => {
     expect(map).toMatchObject({ title: 'edited', folder: 'Work', pinned: true, createdAt: '2020-01-01T00:00:00.000Z' });
   });
 
+  it('never creates a map from a PUT (a stale tab must not resurrect or plant maps)', async () => {
+    const { app, storage } = await fresh();
+    const res = await app.request('/api/maps/abcdef', { method: 'PUT', headers: LOCAL, body: JSON.stringify(makeMap('abcdef')) });
+    expect(res.status).toBe(404);
+    expect(await storage.readMap('abcdef')).toBeNull();
+  });
+
   it('rejects a malformed tree', async () => {
     const { app } = await fresh();
     const body = { ...makeMap('abcdef'), root: { nope: true } };
