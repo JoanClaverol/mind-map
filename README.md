@@ -74,7 +74,7 @@ Each client offers two transports — **pick the right one for what you want**:
 | Transport | What it is | When to use it |
 | --- | --- | --- |
 | **HTTP** — `http://localhost:5454/mcp` | Connects to the running app — the same process your browser is looking at. | **For live co-editing.** AI edits stream onto your open canvas. Requires step 1 to be running. |
-| **stdio** — `node <repo>/bin/mindmap.js stdio` | The client spawns its own headless server on demand. | For map access without the app running (e.g. Claude Desktop reading/writing your library). Edits land in the files but **won't appear live** in a browser tab — it's a separate process. |
+| **stdio** — `node <repo>/bin/mindmap.js stdio` | The client spawns the server on demand. If the app is already running on the same maps, it bridges to it; otherwise it runs headless. | Works with or without the app (e.g. Claude Desktop). Edits are live when the app was running at client start; otherwise they land in the files only. |
 
 Copy-paste setup per client (replace `/path/to/mind-map` with your clone; `mindmap config`
 prints these with the real path filled in):
@@ -312,7 +312,7 @@ your maps.
 | `mindmap: command not found` after install | The global bin dir isn't on your PATH — run `pnpm setup`, restart the shell, then `pnpm add -g link:.` again. Or skip the CLI and use the repo paths directly. |
 | `mind-map isn't built — run "pnpm build"` | The CLI serves the compiled UI: run `pnpm build` in the repo once (and after every `git pull`). |
 | The client doesn't list the mindmap tools | MCP servers load at session start — restart the client/session after adding the config. In Claude Code, check with `/mcp`. |
-| AI edits don't appear in my browser | You're connected over **stdio**, which is a separate headless process. Switch the client to the **HTTP** config (`http://localhost:5454/mcp`) and make sure the app from step 1 is running. |
+| AI edits don't appear in my browser | Over **stdio**, edits go live only when the app is already running on the *same* maps folder when the client starts the server (it then bridges to the app — the client's log says "bridging to the running app"). Start the app first and restart the client, or use the **HTTP** config (`http://localhost:5454/mcp`). Set `MINDMAP_URL` if the app runs on another port. |
 | Claude Desktop says it can't start the server | GUI apps don't inherit your shell PATH — use the absolute Node path that `mindmap config claude-desktop` prints. |
 | Port 5454 is busy | Another instance owns it. Stop it, or run with `PORT=5460 pnpm start` and point the client at the new port. `mindmap up` picks a free port automatically. |
 | Browser tab shows "Autosave failed" after updating | The tab predates a schema upgrade — reload it. |

@@ -1,6 +1,7 @@
 import { applyPatches, enablePatches, produceWithPatches, type Draft, type Patch } from 'immer';
 import { create } from 'zustand';
 import { docFromMap } from '../model/doc';
+import { loadViewport, saveViewport } from './viewportMemory';
 import type { Doc, FolderInfo, MapFile, MapMeta, Viewport } from '../model/types';
 import { setCollapsedFolders } from '../gallery/recents';
 import type { CommandResult } from './commands';
@@ -234,6 +235,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
   loadMap(map) {
     const doc = docFromMap(map);
+    const remembered = loadViewport(map.id) ?? map.viewport ?? null;
     set({
       mapId: map.id,
       title: map.title,
@@ -250,8 +252,8 @@ export const useStore = create<StoreState>((set, get) => ({
       editingGroup: null,
       selectedElementId: null,
       editingElement: null,
-      needsFit: !map.viewport,
-      viewport: map.viewport ?? { x: 60, y: 60, zoom: 1 },
+      needsFit: !remembered,
+      viewport: remembered ?? { x: 60, y: 60, zoom: 1 },
       rev: 0,
       savedRev: 0,
       saveState: 'saved',
@@ -470,11 +472,10 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   setViewport(viewport) {
-    set((s) => ({
-      viewport,
-      rev: s.rev + 1,
-      saveState: s.saveState === 'saved' || s.saveState === 'idle' ? 'dirty' : s.saveState,
-    }));
+    // View state, not doc state: remembered per browser, never dirties the map file.
+    set({ viewport });
+    const { mapId } = get();
+    if (mapId) saveViewport(mapId, viewport);
   },
 
   requestFit() {

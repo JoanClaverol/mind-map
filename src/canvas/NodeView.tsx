@@ -1,7 +1,9 @@
+import { memo } from 'react';
 import type { NodeDir, Rect } from '../layout/layout';
 import { renderNodeContent } from '../model/inline-markdown';
 import { NODE_COLORS, type DocNode, type NodeColor } from '../model/types';
 import { useStore } from '../state/store';
+import { sameDataProps } from './memo';
 import { roughBox } from './sketch';
 
 /** Links never navigate in place — plain click keeps node selection, Cmd/Ctrl+click opens a tab. */
@@ -33,7 +35,9 @@ interface NodeViewProps {
   onToggleCollapse(): void;
 }
 
-export function NodeView({ node, rect, dir, selected, isRoot, dimmed, linkSource, groupMember, onPressStart, onEdit, onToggleCollapse }: NodeViewProps) {
+export const NodeView = memo(NodeViewImpl, sameDataProps);
+
+function NodeViewImpl({ node, rect, dir, selected, isRoot, dimmed, linkSource, groupMember, onPressStart, onEdit, onToggleCollapse }: NodeViewProps) {
   const sketch = useStore((s) => s.sketch);
   const rectClass = `node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${linkSource ? ' link-source' : ''}${groupMember ? ' group-member' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`;
   const box = sketch ? roughBox(node.id, rect.w, rect.h) : null;

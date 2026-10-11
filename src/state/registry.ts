@@ -315,10 +315,8 @@ function addElement(kind: ElementKind): void {
   const anchorTo = kind === 'sticky' && s.selectedId && s.doc.nodes[s.selectedId] ? s.selectedId : null;
   let element: CanvasElement;
   if (anchorTo) {
+    // Several stickies on one node stack automatically (layoutElements).
     element = { id: newId(), kind, text: '', ...size, x: 0, y: 0, anchor: { nodeId: anchorTo, side: 'right' } };
-    // Several stickies on one node stack downward instead of piling up.
-    const stacked = s.doc.elements.filter((e) => e.anchor?.nodeId === anchorTo && e.anchor.side === 'right').length;
-    element.y = stacked * (size.h + 16);
   } else {
     if (s.hoistId) {
       s.addToast('info', 'Free elements are hidden while hoisted — select a node for a sticky, or Esc first');

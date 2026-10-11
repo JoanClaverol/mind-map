@@ -4,6 +4,8 @@ import type { CanvasElement, Doc, ElementSide } from '../model/types';
 
 /** Gap between an anchored element and its node. */
 export const ELEMENT_GAP = 28;
+/** Gap between elements stacked on the same side of one node. */
+const STACK_GAP = 14;
 /** Text inset inside an ellipse: the largest centered box that stays inside it is ~71% (1/√2). */
 const ELLIPSE_TEXT_RATIO = 0.72;
 
@@ -46,13 +48,20 @@ export function elementTextBox(el: CanvasElement, w: number, h: number): Rect {
  */
 export function layoutElements(doc: Doc, nodeRects: Map<string, Rect>, hoisted: boolean): Map<string, Rect> {
   const out = new Map<string, Rect>();
+  // Several elements on one side of one node stack (in list order) instead of
+  // piling up: left/right/below grow downward, above grows upward.
+  const stackOffset = new Map<string, number>();
   for (const el of doc.elements) {
     const h = elementHeight(el);
     if (el.anchor) {
       const node = nodeRects.get(el.anchor.nodeId);
       if (!node) continue;
+      const key = `${el.anchor.nodeId}|${el.anchor.side}`;
+      const offset = stackOffset.get(key) ?? 0;
+      stackOffset.set(key, offset + h + STACK_GAP);
       const at = besideNode(node, el.anchor.side, el.w, h);
-      out.set(el.id, { x: at.x + el.x, y: at.y + el.y, w: el.w, h });
+      const stackY = el.anchor.side === 'above' ? -offset : offset;
+      out.set(el.id, { x: at.x + el.x, y: at.y + stackY + el.y, w: el.w, h });
     } else if (!hoisted) {
       out.set(el.id, { x: el.x, y: el.y, w: el.w, h });
     }

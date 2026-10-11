@@ -27,7 +27,7 @@ The MCP server is available in two forms:
 
 Run `mindmap config <client>` for ready-to-paste config (claude-code, claude-desktop, codex, opencode, omp). There is no authentication; the server binds loopback only and rejects requests whose `Host`/`Origin` isn't localhost.
 
-Only the HTTP transport sees the user's browser: `get_active_view` and `open_map` need it, and stdio edits land on disk without appearing live.
+The browser-facing tools (`get_active_view`, `open_map`, `export_map`) and live edits need the running app: over HTTP always, over stdio when the app was already running on the same maps when the server started (it then bridges to the app).
 
 ## Start here: what is the user looking at?
 
@@ -364,7 +364,7 @@ The trees hold the *structure*; canvas elements hold everything around it — th
 2. **Text** for a free heading or caption (e.g. `side: "above"` the root as a map subtitle).
 3. **Rect / ellipse** to mark a zone or a highlighted concept ("Risk zone" below the budget branch). Shapes don't enclose nodes — use `add_group` to enclose.
 4. Arrows can start or end on an element: `add_relationship` from a sticky to the node it questions.
-5. Several stickies on the same side of one node overlap — nudge later ones with `y` (e.g. `y: 140`), or use different sides.
+5. Several elements on the same side of one node stack automatically (in creation order) — no manual offsets needed.
 6. After placing several, `export_map` and look: fix overlaps with `edit_element` (`x`/`y` nudges, `side`, `w`).
 
 ### Brainstorm with floating trees

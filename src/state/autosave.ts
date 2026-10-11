@@ -17,7 +17,8 @@ function buildMapFile(): MapFile | null {
     title: s.title,
     createdAt: s.createdAt,
     updatedAt: new Date().toISOString(), // server re-stamps authoritatively
-    viewport: s.viewport,
+    // viewport deliberately omitted — it's per-browser view state (viewportMemory.ts);
+    // the server keeps whatever the file already had.
     layout: s.doc.layout,
     pinned: s.pinned ? true : undefined, // JSON.stringify drops undefined — files stay minimal
     relationships: s.doc.relationships.length ? s.doc.relationships : undefined,

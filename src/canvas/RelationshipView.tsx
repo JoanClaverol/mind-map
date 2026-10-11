@@ -1,6 +1,8 @@
+import { memo } from 'react';
 import type { Rect } from '../layout/layout';
 import type { Relationship } from '../model/types';
 import { useStore } from '../state/store';
+import { sameDataProps } from './memo';
 import { relationshipGeometry } from './relationshipPath';
 import { roughStroke } from './sketch';
 
@@ -13,7 +15,9 @@ interface RelationshipViewProps {
   onEdit(): void;
 }
 
-export function RelationshipView({ rel, from, to, selected, onSelect, onEdit }: RelationshipViewProps) {
+export const RelationshipView = memo(RelationshipViewImpl, sameDataProps);
+
+function RelationshipViewImpl({ rel, from, to, selected, onSelect, onEdit }: RelationshipViewProps) {
   const sketch = useStore((s) => s.sketch);
   const { d, mid } = relationshipGeometry(from, to);
   const markerEnd = `url(#${selected ? 'rel-arrow-selected' : 'rel-arrow'})`;

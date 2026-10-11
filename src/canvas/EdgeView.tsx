@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { LIST_INDENT, type NodeDir, type Rect } from '../layout/layout';
 import { useStore } from '../state/store';
 import { roughStroke } from './sketch';
@@ -7,8 +8,11 @@ function Edge({ d }: { d: string }) {
   return <path className="edge" d={sketch ? roughStroke(d) : d} />;
 }
 
+/** Re-renders only when its endpoints move (layout), not on pan/selection. */
+export const EdgeView = memo(EdgeViewImpl);
+
 /** dir is the child's entering direction — it picks the anchor sides. */
-export function EdgeView({ from, to, dir }: { from: Rect; to: Rect; dir: NodeDir }) {
+function EdgeViewImpl({ from, to, dir }: { from: Rect; to: Rect; dir: NodeDir }) {
   if (dir === 'list') {
     // Outline elbow: rail down from the parent at half-indent, rounded turn
     // into the child's left edge. Runs always exceed the radius (gapY ≥ 14).

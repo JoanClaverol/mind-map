@@ -1,8 +1,10 @@
+import { memo } from 'react';
 import type { Rect } from '../layout/layout';
 import { renderNodeContent } from '../model/inline-markdown';
 import { NODE_COLORS, type CanvasElement, type NodeColor } from '../model/types';
 import { useStore } from '../state/store';
 import { elementTextBox } from './elements';
+import { sameDataProps } from './memo';
 import { roughBox, roughEllipse } from './sketch';
 
 interface ElementViewProps {
@@ -20,7 +22,9 @@ interface ElementViewProps {
  * A freeform canvas element. Shape + text box share the classes the palette
  * CSS keys on (`.element.kind-*.color-*`), in both the clean and sketch looks.
  */
-export function ElementView({ el, rect, selected, editing, onPress, onResizePress, onEdit }: ElementViewProps) {
+export const ElementView = memo(ElementViewImpl, sameDataProps);
+
+function ElementViewImpl({ el, rect, selected, editing, onPress, onResizePress, onEdit }: ElementViewProps) {
   const sketch = useStore((s) => s.sketch);
   const { w, h } = rect;
   const colorClass = el.color && NODE_COLORS.includes(el.color as NodeColor) ? ` color-${el.color}` : '';

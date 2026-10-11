@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { nanoid } from 'nanoid';
@@ -79,6 +80,14 @@ app.get('/api/events', (c) =>
     await closed;
   }),
 );
+
+// Which library this instance serves — lets a stdio MCP process find a running
+// app on the same maps and proxy to it (so its edits go live; see mcp-stdio.ts).
+app.get('/api/info', async (c) => {
+  const dir = storage.mapsDir();
+  const mapsDir = await realpath(dir).catch(() => dir);
+  return c.json({ app: 'mindmap-mcp', mapsDir });
+});
 
 // The tab reports what the user is looking at, so MCP clients can ask (get_active_view).
 app.post('/api/view', async (c) => {
@@ -167,6 +176,8 @@ app.put('/api/maps/:id', async (c) => {
     else delete next.folder;
     if (onDisk.pinned) next.pinned = true;
     else delete next.pinned;
+    // Tabs no longer send view state (it lives in their localStorage); keep the file's.
+    if (!next.viewport && onDisk.viewport) next.viewport = onDisk.viewport;
     return next;
   });
   if (!written) await storage.writeMap({ ...incoming, updatedAt }); // file vanished — recreate it
