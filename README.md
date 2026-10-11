@@ -155,6 +155,22 @@ While it works: keep editing by hand, drag nodes around, and press `⌘Z` any ti
 edit (even a 50-op batch) is one undo step, and your version always wins on conflicts.
 Press `⇧I` to see the notes and tags the AI attached.
 
+### One-line routines (slash commands)
+
+The server ships its workflows as MCP **prompts**, which clients surface as slash commands —
+the whole job (plan → create → decorate → export → *look* → fix) from one line:
+
+| Prompt | In omp (`mindmap omp`) | In Claude Code |
+| --- | --- | --- |
+| `build_map` — a polished new map on a topic | `/mind-map:build_map topic="Weekend in Lisbon"` | `/mcp__mind-map__build_map` |
+| `expand_branch` — grow the branch you've selected | `/mind-map:expand_branch focus="costs"` | `/mcp__mind-map__expand_branch` |
+| `challenge_map` — ❓ the weak spots, add nothing | `/mind-map:challenge_map` | `/mcp__mind-map__challenge_map` |
+| `quiz_me` — examine your understanding, grade on canvas | `/mind-map:quiz_me` | `/mcp__mind-map__quiz_me` |
+
+(The prefix is whatever you named the server in your client config — `mind-map` for
+`mindmap omp`/`mindmap claude`, `mindmap` if you followed the snippets above.) The routines'
+text lives in [MCP.md](MCP.md), so editing a workflow there changes the command too.
+
 ## Use it inside another project
 
 For maps that belong to a *different* repo (a repo analysis, a presentation outline…),

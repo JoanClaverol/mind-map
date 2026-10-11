@@ -38,9 +38,9 @@ function nowIso(): string {
 }
 
 function buildMapFile(title: string, branches: FileNode[], layout: LayoutStyle = 'right'): MapFile {
-  // A lone top-level bullet that repeats the title IS the central topic — don't nest it under a duplicate.
-  const lone = branches.length === 1 && branches[0].text.trim().toLowerCase() === title.toLowerCase();
-  const root: FileNode = lone ? branches[0] : { id: nanoid(12), text: title, children: branches };
+  // A lone top-level bullet IS the central topic: never nest it under a title node
+  // with one child (models often word the bullet differently from the title).
+  const root: FileNode = branches.length === 1 ? branches[0] : { id: nanoid(12), text: title, children: branches };
   assignIds(root);
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -180,6 +180,19 @@ async function readTextFile(...segments: string[]): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * One `### heading` section of MCP.md (up to the next ### or ##), so the MCP
+ * prompts below and the guide models read can never drift apart.
+ */
+async function guideSection(heading: string): Promise<string> {
+  const guide = (await readTextFile('MCP.md')) ?? '';
+  const start = guide.indexOf(`### ${heading}`);
+  if (start === -1) return '';
+  const rest = guide.slice(start);
+  const end = rest.slice(4).search(/\n##+ /);
+  return (end === -1 ? rest : rest.slice(0, end + 4)).trim();
 }
 
 async function buildProjectContext(): Promise<string> {
@@ -1197,6 +1210,69 @@ export function createMcpServer(): McpServer {
       }
       return { content: [{ type: 'text', text }] };
     },
+  );
+
+  // Prompts: client-side slash commands (omp, Claude Code /mcp__…, others) that
+  // hand the model a complete routine. The routine text lives in MCP.md.
+  const promptMessage = (text: string) => ({ messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }] });
+
+  server.registerPrompt(
+    'build_map',
+    {
+      title: 'Build a mind map',
+      description: 'Plan, create, decorate, visually check, and polish a new mind map on a topic — live on the canvas',
+      argsSchema: {
+        topic: z.string().describe('What the map is about (and any must-haves)'),
+        layout: z.string().optional().describe('Optional: right | balanced | down | timeline'),
+      },
+    },
+    async ({ topic, layout }) =>
+      promptMessage(
+        `Build a mind map about: ${topic}${layout ? `\nUse the "${layout}" layout.` : ''}\n\n` +
+          `Follow this routine exactly, using the mindmap tools:\n\n${await guideSection('Build a polished map in one go')}`,
+      ),
+  );
+
+  server.registerPrompt(
+    'expand_branch',
+    {
+      title: 'Expand the selected branch',
+      description: 'Grow the branch selected in the browser, matching the map\'s existing style and legend',
+      argsSchema: { focus: z.string().optional().describe('Optional: what to expand it with or toward') },
+    },
+    async ({ focus }) =>
+      promptMessage(
+        `Expand the branch I have selected in the mind map${focus ? `, focusing on: ${focus}` : ''}.\n\n` +
+          `Follow this routine, using the mindmap tools:\n\n${await guideSection('Expand the selected branch')}`,
+      ),
+  );
+
+  server.registerPrompt(
+    'challenge_map',
+    {
+      title: 'Challenge this map',
+      description: 'Stress-test the open map: mark weak spots with ❓ questions instead of adding content',
+      argsSchema: { map: z.string().optional().describe('Optional map title or id; default: the open map') },
+    },
+    async ({ map }) =>
+      promptMessage(
+        `Challenge ${map ? `the map "${map}"` : 'the map I have open (get_active_view)'}.\n\n` +
+          (await guideSection('Challenge the map (Socratic mode)')),
+      ),
+  );
+
+  server.registerPrompt(
+    'quiz_me',
+    {
+      title: 'Quiz me on this map',
+      description: 'Examine your understanding of a map, one question at a time, then grade it on the canvas',
+      argsSchema: { map: z.string().optional().describe('Optional map title or id; default: the open map') },
+    },
+    async ({ map }) =>
+      promptMessage(
+        `Quiz me on ${map ? `the map "${map}"` : 'the map I have open (get_active_view)'}.\n\n` +
+          (await guideSection('Quiz the user (assessment mode)')),
+      ),
   );
 
   server.registerResource(

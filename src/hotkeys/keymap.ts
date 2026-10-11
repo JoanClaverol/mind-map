@@ -98,6 +98,9 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'escape', context: 'elemsel', command: 'element.deselect' },
   { combo: 'mod+z', context: 'elemsel', command: 'history.undo' },
   { combo: 'mod+shift+z', context: 'elemsel', command: 'history.redo' },
+  { combo: 'mod+0', context: 'elemsel', command: 'view.fit' },
+  { combo: 'mod+=', context: 'elemsel', command: 'view.zoomIn' },
+  { combo: 'mod+-', context: 'elemsel', command: 'view.zoomOut' },
   // history
   { combo: 'mod+z', context: 'nav', command: 'history.undo' },
   { combo: 'mod+shift+z', context: 'nav', command: 'history.redo' },

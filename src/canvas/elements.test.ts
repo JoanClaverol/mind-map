@@ -32,6 +32,16 @@ describe('layoutElements', () => {
     expect(r.get('d')).toMatchObject({ x: -10 + 5, y: -ELEMENT_GAP - 50 - 64 }); // above c, plus its nudge
   });
 
+  it('pushes an anchored element outward past nodes it would cover', () => {
+    const doc = normalize({ id: 'root', text: 'r', children: [] }, 'right', [], [], [], [
+      el('a', { anchor: { nodeId: 'root', side: 'right' } }),
+    ]);
+    const child = { x: 140, y: -20, w: 120, h: 40 }; // sits exactly where the sticky would go
+    const r = layoutElements(doc, new Map([...nodeRects, ['child', child]]), false).get('a')!;
+    expect(r.x).toBeGreaterThanOrEqual(child.x + child.w); // cleared it horizontally…
+    expect(r.y).toBe(-10); // …without moving off its row
+  });
+
   it('hides anchored elements with their node and free ones while hoisted', () => {
     const doc = normalize({ id: 'root', text: 'r', children: [] }, 'right', [], [], [], [
       el('free', { x: 300, y: 300 }),

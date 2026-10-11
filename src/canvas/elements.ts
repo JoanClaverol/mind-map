@@ -1,11 +1,28 @@
 import type { Rect } from '../layout/layout';
-import { measureElementText } from '../layout/measure';
+import { measureElementText, measureElementTextWidth } from '../layout/measure';
 import type { CanvasElement, Doc, ElementSide } from '../model/types';
 
 /** Gap between an anchored element and its node. */
 export const ELEMENT_GAP = 28;
 /** Gap between elements stacked on the same side of one node. */
 const STACK_GAP = 14;
+/** Collision avoidance: step outward this far, at most this many times. */
+const PUSH_STEP = 24;
+const MAX_PUSHES = 40;
+const CLEARANCE = 8;
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return (
+    a.x < b.x + b.w + CLEARANCE && a.x + a.w + CLEARANCE > b.x && a.y < b.y + b.h + CLEARANCE && a.y + a.h + CLEARANCE > b.y
+  );
+}
+
+const OUTWARD: Record<ElementSide, { dx: number; dy: number }> = {
+  right: { dx: 1, dy: 0 },
+  left: { dx: -1, dy: 0 },
+  above: { dx: 0, dy: -1 },
+  below: { dx: 0, dy: 1 },
+};
 /** Text inset inside an ellipse: the largest centered box that stays inside it is ~71% (1/√2). */
 const ELLIPSE_TEXT_RATIO = 0.72;
 
@@ -51,6 +68,8 @@ export function layoutElements(doc: Doc, nodeRects: Map<string, Rect>, hoisted: 
   // Several elements on one side of one node stack (in list order) instead of
   // piling up: left/right/below grow downward, above grows upward.
   const stackOffset = new Map<string, number>();
+  const nodes = [...nodeRects.values()];
+  const placed: Rect[] = [];
   for (const el of doc.elements) {
     const h = elementHeight(el);
     if (el.anchor) {
@@ -60,8 +79,19 @@ export function layoutElements(doc: Doc, nodeRects: Map<string, Rect>, hoisted: 
       const offset = stackOffset.get(key) ?? 0;
       stackOffset.set(key, offset + h + STACK_GAP);
       const at = besideNode(node, el.anchor.side, el.w, h);
-      const stackY = el.anchor.side === 'above' ? -offset : offset;
-      out.set(el.id, { x: at.x + el.x, y: at.y + stackY + el.y, w: el.w, h });
+      const base: Rect = { x: at.x, y: at.y + (el.anchor.side === 'above' ? -offset : offset), w: el.w, h };
+      // "Beside" must not mean "on top of": step outward until clear of every node
+      // and earlier element (e.g. past the children of a node anchored on its right).
+      const dir = OUTWARD[el.anchor.side];
+      for (let i = 0; i < MAX_PUSHES && (nodes.some((r) => overlaps(base, r)) || placed.some((r) => overlaps(base, r))); i++) {
+        base.x += dir.dx * PUSH_STEP;
+        base.y += dir.dy * PUSH_STEP;
+      }
+      // A text element's box is often far wider than its words (left-aligned):
+      // only the inked part should push later elements away.
+      placed.push(el.kind === 'text' && el.text ? { ...base, w: measureElementTextWidth(el.text, el.kind, el.w) } : base);
+      // The user's/AI's nudge applies after avoidance — a deliberate placement wins.
+      out.set(el.id, { x: base.x + el.x, y: base.y + el.y, w: el.w, h });
     } else if (!hoisted) {
       out.set(el.id, { x: el.x, y: el.y, w: el.w, h });
     }

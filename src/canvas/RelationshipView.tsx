@@ -3,7 +3,7 @@ import type { Rect } from '../layout/layout';
 import type { Relationship } from '../model/types';
 import { useStore } from '../state/store';
 import { sameDataProps } from './memo';
-import { relationshipGeometry } from './relationshipPath';
+import { REL_LABEL_H, relationshipGeometry, relLabelWidth } from './relationshipPath';
 import { roughStroke } from './sketch';
 
 interface RelationshipViewProps {
@@ -11,17 +11,29 @@ interface RelationshipViewProps {
   from: Rect;
   to: Rect;
   selected: boolean;
+  /**
+   * Arrows render in two passes: the line UNDER the nodes (node fills hide
+   * it where it crosses them, instead of striking through their text) and
+   * the label chip ON TOP, slid along the curve to a spot clear of `obstacles`.
+   */
+  part: 'line' | 'label';
+  /** Node + element rects the label avoids (stable identity per layout). */
+  obstacles: Rect[];
   onSelect(e: React.MouseEvent): void;
   onEdit(): void;
 }
 
 export const RelationshipView = memo(RelationshipViewImpl, sameDataProps);
 
-function RelationshipViewImpl({ rel, from, to, selected, onSelect, onEdit }: RelationshipViewProps) {
+function RelationshipViewImpl({ rel, from, to, selected, part, obstacles, onSelect, onEdit }: RelationshipViewProps) {
   const sketch = useStore((s) => s.sketch);
-  const { d, mid } = relationshipGeometry(from, to);
+  const labelWidth = rel.label ? relLabelWidth(rel.label) : 0;
+  const { d, mid } = relationshipGeometry(
+    from,
+    to,
+    part === 'label' && rel.label ? { width: labelWidth, obstacles } : undefined,
+  );
   const markerEnd = `url(#${selected ? 'rel-arrow-selected' : 'rel-arrow'})`;
-  const labelWidth = rel.label ? 14 + 7 * rel.label.length : 0;
   const press = (e: React.MouseEvent) => {
     e.stopPropagation();
     onSelect(e);
@@ -30,28 +42,31 @@ function RelationshipViewImpl({ rel, from, to, selected, onSelect, onEdit }: Rel
     e.stopPropagation();
     onEdit();
   };
+  if (part === 'line') {
+    return (
+      <g>
+        {/* Fat invisible path so the thin arrow is easy to click. */}
+        <path className="rel-hit" d={d} onMouseDown={press} onDoubleClick={dbl} />
+        <path
+          className={`relationship${selected ? ' selected' : ''}`}
+          d={sketch ? roughStroke(d, 0.7) : d}
+          markerEnd={markerEnd}
+        />
+      </g>
+    );
+  }
+  if (!rel.label) return null;
   return (
-    <g>
-      {/* Fat invisible path so the thin arrow is easy to click. */}
-      <path className="rel-hit" d={d} onMouseDown={press} onDoubleClick={dbl} />
-      <path
-        className={`relationship${selected ? ' selected' : ''}`}
-        d={sketch ? roughStroke(d, 0.7) : d}
-        markerEnd={markerEnd}
-      />
-      {rel.label && (
-        <g
-          className={`rel-label${selected ? ' selected' : ''}`}
-          transform={`translate(${mid.x - labelWidth / 2},${mid.y - 9})`}
-          onMouseDown={press}
-          onDoubleClick={dbl}
-        >
-          <rect width={labelWidth} height={18} rx={5} />
-          <text x={labelWidth / 2} y={13} textAnchor="middle">
-            {rel.label}
-          </text>
-        </g>
-      )}
+    <g
+      className={`rel-label${selected ? ' selected' : ''}`}
+      transform={`translate(${mid.x - labelWidth / 2},${mid.y - REL_LABEL_H / 2})`}
+      onMouseDown={press}
+      onDoubleClick={dbl}
+    >
+      <rect width={labelWidth} height={REL_LABEL_H} rx={5} />
+      <text x={labelWidth / 2} y={13} textAnchor="middle">
+        {rel.label}
+      </text>
     </g>
   );
 }

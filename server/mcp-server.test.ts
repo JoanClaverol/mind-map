@@ -42,6 +42,35 @@ describe('mcp-server tools', () => {
     expect(text).toContain('apply_ops');
   });
 
+  it('a lone top-level bullet becomes the root — no single-child title node', async () => {
+    const client = await createClient();
+    const text = textContent(
+      await client.callTool({
+        name: 'create_map_from_outline',
+        arguments: { title: 'Weekend Trip', markdown: '- Lisbon weekend\n  - Friday\n  - Saturday', open: false },
+      }),
+    );
+    const id = text.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+    const map = JSON.parse(readFileSync(path.join(mapsDir, `${id}.json`), 'utf8')) as MapFile;
+    expect(map.title).toBe('Weekend Trip');
+    expect(map.root.text).toBe('Lisbon weekend');
+    expect(map.root.children.map((c) => c.text)).toEqual(['Friday', 'Saturday']);
+  });
+
+  it('exposes the routines as prompts, with their text pulled from MCP.md', async () => {
+    const client = await createClient();
+    const { prompts } = await client.listPrompts();
+    expect(prompts.map((p) => p.name).sort()).toEqual(['build_map', 'challenge_map', 'expand_branch', 'quiz_me']);
+    const build = await client.getPrompt({ name: 'build_map', arguments: { topic: 'Trip to Japan', layout: 'timeline' } });
+    const text = (build.messages[0].content as { text: string }).text;
+    expect(text).toContain('Trip to Japan');
+    expect(text).toContain('"timeline" layout');
+    expect(text).toContain('create_map_from_outline'); // the routine itself
+    expect(text).not.toContain('### Expand the selected branch'); // one section only
+    const quiz = await client.getPrompt({ name: 'quiz_me', arguments: {} });
+    expect((quiz.messages[0].content as { text: string }).text).toContain('Read once, silently');
+  });
+
   it('exposes the MCP guide as a resource', async () => {
     const client = await createClient();
     const resources = await client.listResources();
@@ -86,7 +115,7 @@ describe('mcp-server tools', () => {
       name: 'create_map_from_outline',
       arguments: {
         title: 'Markdown round-trip',
-        markdown: '- Alpha\n  - Beta',
+        markdown: '- Alpha\n  - Beta\n- Gamma',
       },
     });
     const mapId = textContent(createResult).match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
@@ -110,7 +139,7 @@ describe('mcp-server tools', () => {
     const createText = textContent(
       await client.callTool({
         name: 'create_map_from_outline',
-        arguments: { title: 'Edit target', markdown: '- Alpha' },
+        arguments: { title: 'Edit target', markdown: '- Alpha\n- Omega' },
       }),
     );
     const mapId = createText.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
@@ -314,7 +343,7 @@ describe('mcp-server tools', () => {
     const createText = textContent(
       await client.callTool({
         name: 'create_map_from_outline',
-        arguments: { title: 'Atomic', markdown: '- A' },
+        arguments: { title: 'Atomic', markdown: '- A\n- B' },
       }),
     );
     const mapId = createText.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
@@ -625,7 +654,7 @@ describe('mcp-server tools', () => {
       );
       return text.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
     };
-    const m1 = await mk('Search one', '- Alpha\n  - needle here');
+    const m1 = await mk('Search one', '- Alpha\n  - needle here\n- Omega');
     const m2 = await mk('Search two', '- needle top\n- other');
 
     const scoped = textContent(

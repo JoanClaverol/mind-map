@@ -23,7 +23,7 @@ import { NodeEditor } from './NodeEditor';
 import { NodeView } from './NodeView';
 import { RelationshipLabelEditor } from './RelationshipLabelEditor';
 import { RelationshipView } from './RelationshipView';
-import { relationshipGeometry } from './relationshipPath';
+import { relationshipGeometry, relLabelWidth } from './relationshipPath';
 import { fitToContent, revealRect, screenToWorld, zoomAt } from './viewport';
 
 const DRAG_THRESHOLD_PX = 5;
@@ -115,6 +115,12 @@ export function MindMapCanvas() {
   };
   /** Arrow endpoints can be nodes or elements. */
   const linkRect = (id: string): Rect | undefined => layout?.rects.get(id) ?? shownElementRect(id);
+
+  // What arrow labels steer clear of. Stable per layout so memoized arrows don't re-render on pan.
+  const labelObstacles = useMemo(
+    () => [...(layout?.rects.values() ?? []), ...elementRects.values()],
+    [layout, elementRects],
+  );
 
   // The selected element vanished (undo, AI delete) — drop the stale selection.
   useEffect(() => {
@@ -426,7 +432,36 @@ export function MindMapCanvas() {
   const editingRelData = editingRel ? doc.relationships.find((r) => r.id === editingRel.relId) : undefined;
   const editFrom = editingRelData ? linkRect(editingRelData.from) : undefined;
   const editTo = editingRelData ? linkRect(editingRelData.to) : undefined;
-  const editingRelMid = editFrom && editTo ? relationshipGeometry(editFrom, editTo).mid : undefined;
+  const editingRelMid =
+    editFrom && editTo && editingRelData
+      ? relationshipGeometry(editFrom, editTo, {
+          width: relLabelWidth(editingRelData.label || 'label'),
+          obstacles: labelObstacles,
+        }).mid
+      : undefined;
+
+  const renderRelationships = (part: 'line' | 'label') =>
+    doc.relationships.map((rel) => {
+      const from = linkRect(rel.from);
+      const to = linkRect(rel.to);
+      if (!from || !to) return null; // an endpoint is collapsed/hidden
+      return (
+        <RelationshipView
+          key={rel.id}
+          rel={rel}
+          from={from}
+          to={to}
+          part={part}
+          obstacles={labelObstacles}
+          selected={rel.id === selectedRelId}
+          onSelect={() => {
+            useStore.getState().selectRelationship(rel.id);
+            hostRef.current?.focus();
+          }}
+          onEdit={() => useStore.getState().startEditRel(rel.id)}
+        />
+      );
+    });
 
   // Visible member rects per group (hidden members drop out of the hull).
   const memberRects = (members: string[]) =>
@@ -458,24 +493,6 @@ export function MindMapCanvas() {
           </marker>
         </defs>
         <g transform={`translate(${viewport.x},${viewport.y}) scale(${viewport.zoom})`}>
-          <g className="elements">
-            {doc.elements.map((el) => {
-              const rect = shownElementRect(el.id);
-              if (!rect) return null;
-              return (
-                <ElementView
-                  key={el.id}
-                  el={el}
-                  rect={rect}
-                  selected={el.id === selectedElementId}
-                  editing={editingElement?.elementId === el.id}
-                  onPress={(e) => handleElementPress(el, 'move', e)}
-                  onResizePress={(e) => handleElementPress(el, 'resize', e)}
-                  onEdit={() => useStore.getState().startEditElement(el.id)}
-                />
-              );
-            })}
-          </g>
           <g className="groups">
             {doc.groups.map((group) => {
               // While re-editing this group's members, the pending hull replaces it.
@@ -525,6 +542,26 @@ export function MindMapCanvas() {
                 ));
             })}
           </g>
+          <g className="relationships">{renderRelationships('line')}</g>
+          {/* Elements above arrow lines (a line never strikes through sticky text), below nodes. */}
+          <g className="elements">
+            {doc.elements.map((el) => {
+              const rect = shownElementRect(el.id);
+              if (!rect) return null;
+              return (
+                <ElementView
+                  key={el.id}
+                  el={el}
+                  rect={rect}
+                  selected={el.id === selectedElementId}
+                  editing={editingElement?.elementId === el.id}
+                  onPress={(e) => handleElementPress(el, 'move', e)}
+                  onResizePress={(e) => handleElementPress(el, 'resize', e)}
+                  onEdit={() => useStore.getState().startEditElement(el.id)}
+                />
+              );
+            })}
+          </g>
           <g className="nodes">
             {[...layout.rects.entries()].map(([id, rect]) => (
               <NodeView
@@ -546,26 +583,8 @@ export function MindMapCanvas() {
               />
             ))}
           </g>
-          <g className="relationships">
-            {doc.relationships.map((rel) => {
-              const from = linkRect(rel.from);
-              const to = linkRect(rel.to);
-              if (!from || !to) return null; // an endpoint is collapsed/hidden
-              return (
-                <RelationshipView
-                  key={rel.id}
-                  rel={rel}
-                  from={from}
-                  to={to}
-                  selected={rel.id === selectedRelId}
-                  onSelect={() => {
-                    useStore.getState().selectRelationship(rel.id);
-                    hostRef.current?.focus();
-                  }}
-                  onEdit={() => useStore.getState().startEditRel(rel.id)}
-                />
-              );
-            })}
+          <g className="relationships rel-labels">
+            {renderRelationships('label')}
             {pendingArrow && (
               <path className="relationship pending" d={pendingArrow} markerEnd="url(#rel-arrow-selected)" />
             )}

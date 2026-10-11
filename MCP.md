@@ -224,7 +224,7 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 ### `create_map_from_outline`
 
 - Arguments: `{ title: string, markdown?: string, layout?: "right" | "balanced" | "down" | "timeline", open?: boolean }`
-- Parses the markdown into a tree and saves a new map. Several top-level bullets become children of a root named after the title; a single top-level bullet whose text equals the title becomes the root itself.
+- Parses the markdown into a tree and saves a new map. Several top-level bullets become children of a root named after the title; a single top-level bullet becomes the root (central topic) itself.
 - Opens the map in the user's browser unless `open: false`.
 - Returns the new map id and the outline annotated with node ids, ready for follow-up `apply_ops` (metadata, arrows, groups).
 
@@ -372,6 +372,46 @@ The trees hold the *structure*; canvas elements hold everything around it — th
 1. When an idea doesn't fit the current structure, `create_tree` it as its own floating cluster instead of forcing it under a node.
 2. Connect clusters to the main tree (or each other) with `add_relationship` arrows as the relations emerge.
 3. When a cluster's place becomes clear, attach it: `move_node` with the tree's root id. The reverse — `detach_node` — splits an overgrown branch out to stand alone.
+
+### Build a polished map in one go
+
+The routine behind the `build_map` prompt — the whole job in ~4 tool calls, checked visually:
+
+1. **Plan before calling anything.** Central topic; 4–7 main branches; 2–5 children each;
+   at most 4 levels. Node text is a short phrase (≤ 6 words) — ideas, not sentences; detail
+   goes in notes. Pick a layout that fits the shape of the content: `timeline` for plans and
+   schedules, `down` for hierarchies and org charts, `balanced` for a brainstorm with many
+   branches, `right` otherwise.
+2. **Create**: `create_map_from_outline` with `title`, `markdown`, `layout`. It opens on the
+   user's screen and returns every node id.
+3. **Decorate in ONE `apply_ops` batch** (≤ 50 ops) using those ids:
+   - `set_node_meta`: icons/colors that encode one consistent meaning (status, category,
+     priority) — decide the legend first; notes for detail; tags for cross-cutting themes.
+   - `add_relationship`: the 2–5 cross-links that matter most, labeled ("depends on",
+     "contradicts", "enables"). Not every relation — the tree already shows containment.
+   - `add_group`: a set that spans parents and belongs together.
+   - `add_element` stickies for open questions, caveats, and decisions-pending, anchored
+     to the node they concern; optionally a `text` element `above` the root as a subtitle.
+4. **Look**: `export_map` (png) and check the image for overlapping labels or stickies,
+   crowded regions, long wrapped text, and lopsided branches.
+5. **Fix** with one more `apply_ops` (shorten text, move nodes, change a sticky's `side`,
+   `set_layout`). At most two look/fix rounds.
+6. **Report briefly**: what you built, the legend, and the open questions you flagged.
+   Don't paste the outline back — it's on the user's screen.
+
+### Expand the selected branch
+
+The routine behind the `expand_branch` prompt:
+
+1. `get_active_view` — the open map and the selected node (depth 2). If nothing is
+   selected, ask which branch.
+2. `get_subtree` on the selected node if you need its full depth, and read its siblings'
+   names so the new content doesn't duplicate neighbours.
+3. One `apply_ops` batch: `add_nodes` under the selected node (same style: short phrases,
+   ≤ 2 new levels), plus metadata/arrows/stickies following the map's existing legend —
+   inspect existing icons/colors and reuse them consistently.
+4. `export_map` only if you added more than ~15 nodes; fix crowding if needed.
+5. Report in one or two lines.
 
 ### Challenge the map (Socratic mode)
 
