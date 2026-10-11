@@ -95,6 +95,49 @@ export interface Group {
   color?: string;
 }
 
+/**
+ * Freeform canvas elements (Excalidraw-style annotations beside the trees):
+ * sticky notes, free text, rectangles, ellipses. Not part of any tree — layout
+ * never moves them — but arrows can link to them like nodes.
+ */
+export const ELEMENT_KINDS = ['sticky', 'text', 'rect', 'ellipse'] as const;
+export type ElementKind = (typeof ELEMENT_KINDS)[number];
+export const ELEMENT_SIDES = ['right', 'left', 'above', 'below'] as const;
+export type ElementSide = (typeof ELEMENT_SIDES)[number];
+export const MAX_ELEMENT_TEXT_LEN = 4000;
+export const MIN_ELEMENT_SIZE = 24;
+export const MAX_ELEMENT_SIZE = 4000;
+/** Default size per kind (the browser grows text-bearing kinds to fit their text). */
+export const ELEMENT_DEFAULT_SIZE: Record<ElementKind, { w: number; h: number }> = {
+  sticky: { w: 180, h: 120 },
+  text: { w: 220, h: 32 },
+  rect: { w: 200, h: 120 },
+  ellipse: { w: 180, h: 120 },
+};
+
+export interface CanvasElement {
+  id: string;
+  kind: ElementKind;
+  /** Inline markdown, like node text. May be empty for shapes. */
+  text: string;
+  /** Minimum size; text-bearing kinds render taller when their text needs it. */
+  w: number;
+  h: number;
+  /**
+   * World position of the top-left corner — or, when anchored, a nudge offset
+   * from the anchored spot beside the node.
+   */
+  x: number;
+  y: number;
+  /**
+   * Attached beside a node: follows it through any layout change, hidden when
+   * the node is, deleted (undoably) with it. This is how an AI places things
+   * without knowing pixel coordinates.
+   */
+  anchor?: { nodeId: string; side: ElementSide };
+  color?: string;
+}
+
 /** One map = one JSON file in maps/. */
 export interface MapFile {
   schemaVersion: typeof SCHEMA_VERSION;
@@ -116,6 +159,8 @@ export interface MapFile {
   root: FileNode;
   /** Floating trees (XMind floating topics). Omitted when empty so files stay minimal. */
   floating?: FloatingTree[];
+  /** Freeform canvas elements. Omitted when empty so files stay minimal. */
+  elements?: CanvasElement[];
 }
 
 export interface MapMeta {
@@ -182,4 +227,6 @@ export interface Doc {
   groups: Group[];
   /** Floating trees: root ids + world positions. Always present, like relationships. */
   floating: Array<{ rootId: string; pos: Position }>;
+  /** Freeform canvas elements, in z-order (last on top). Always present. */
+  elements: CanvasElement[];
 }

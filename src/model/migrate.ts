@@ -1,6 +1,12 @@
 import {
   BRANCH_STYLES,
+  ELEMENT_DEFAULT_SIZE,
+  ELEMENT_KINDS,
+  ELEMENT_SIDES,
   LAYOUT_STYLES,
+  MAX_ELEMENT_SIZE,
+  MAX_ELEMENT_TEXT_LEN,
+  MIN_ELEMENT_SIZE,
   MAX_ICON_LEN,
   MAX_NOTE_LEN,
   MAX_TAGS,
@@ -9,6 +15,9 @@ import {
   SCHEMA_VERSION,
   normalizeFolderName,
   type BranchStyle,
+  type CanvasElement,
+  type ElementKind,
+  type ElementSide,
   type FileNode,
   type FloatingTree,
   type Group,
@@ -166,6 +175,41 @@ export function migrateMapFile(raw: unknown): MapFile {
     if (map.groups.length === 0) delete map.groups;
   } else if (map.groups !== undefined) {
     delete map.groups;
+  }
+  // Tolerate hand-edited elements: keep well-formed, id-unique entries; clamp sizes.
+  if (Array.isArray(map.elements)) {
+    const nodeIds = new Set<string>();
+    collectIds(map.root, nodeIds);
+    for (const f of map.floating ?? []) collectIds(f.root, nodeIds);
+    const seen = new Set<string>();
+    map.elements = map.elements.flatMap((raw): CanvasElement[] => {
+      const e = raw as Partial<CanvasElement> | null;
+      if (!e || typeof e !== 'object' || typeof e.id !== 'string' || seen.has(e.id) || nodeIds.has(e.id)) return [];
+      if (!ELEMENT_KINDS.includes(e.kind as ElementKind)) return [];
+      seen.add(e.id);
+      const kind = e.kind as ElementKind;
+      const size = (v: unknown, fallback: number) =>
+        Number.isFinite(v) ? Math.min(MAX_ELEMENT_SIZE, Math.max(MIN_ELEMENT_SIZE, v as number)) : fallback;
+      const out: CanvasElement = {
+        id: e.id,
+        kind,
+        text: typeof e.text === 'string' ? e.text.slice(0, MAX_ELEMENT_TEXT_LEN) : '',
+        w: size(e.w, ELEMENT_DEFAULT_SIZE[kind].w),
+        h: size(e.h, ELEMENT_DEFAULT_SIZE[kind].h),
+        x: Number.isFinite(e.x) ? (e.x as number) : 0,
+        y: Number.isFinite(e.y) ? (e.y as number) : 0,
+      };
+      const a = e.anchor;
+      if (a && typeof a === 'object') {
+        if (!nodeIds.has(a.nodeId) || !ELEMENT_SIDES.includes(a.side as ElementSide)) return [];
+        out.anchor = { nodeId: a.nodeId, side: a.side };
+      }
+      if (typeof e.color === 'string' && NODE_COLORS.includes(e.color as NodeColor)) out.color = e.color;
+      return [out];
+    });
+    if (map.elements.length === 0) delete map.elements;
+  } else if (map.elements !== undefined) {
+    delete map.elements;
   }
   sanitizeNodeMeta(map.root);
   for (const f of map.floating ?? []) sanitizeNodeMeta(f.root);

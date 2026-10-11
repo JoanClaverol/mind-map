@@ -1,6 +1,11 @@
 import { floatingEntry, newId, subtreeIds } from './doc';
 import {
   BRANCH_STYLES,
+  ELEMENT_KINDS,
+  ELEMENT_SIDES,
+  MAX_ELEMENT_SIZE,
+  MAX_ELEMENT_TEXT_LEN,
+  MIN_ELEMENT_SIZE,
   MAX_ICON_LEN,
   MAX_NOTE_LEN,
   MAX_TAGS,
@@ -9,6 +14,7 @@ import {
   NODE_COLORS,
   type BranchStyle,
   type LayoutStyle,
+  type CanvasElement,
   type Doc,
   type DocNode,
   type FileNode,
@@ -49,6 +55,20 @@ export type MapOp =
   | { type: 'create_tree'; root: FileNode; pos: Position } // root carries FINAL ids
   | { type: 'move_tree'; rootId: string; pos: Position }
   | { type: 'set_layout'; layout: LayoutStyle } // the map-level structure (⇧S)
+  | { type: 'add_element'; element: CanvasElement } // carries its FINAL id
+  | {
+      // Partial element update: undefined = leave untouched; color/anchor null clears.
+      type: 'edit_element';
+      elementId: string;
+      text?: string;
+      x?: number;
+      y?: number;
+      w?: number;
+      h?: number;
+      color?: NodeColor | null;
+      anchor?: CanvasElement['anchor'] | null;
+    }
+  | { type: 'delete_element'; elementId: string }
   | { type: 'detach_node'; nodeId: string; pos: Position }
   | {
       // Partial-field metadata update: undefined = leave untouched, null = clear.
@@ -111,6 +131,12 @@ export function applyDocOp(doc: Doc, op: MapOp): OpResult {
       return detachNode(doc, op.nodeId, op.pos);
     case 'set_node_meta':
       return setNodeMeta(doc, op);
+    case 'add_element':
+      return addElement(doc, op.element);
+    case 'edit_element':
+      return editElement(doc, op);
+    case 'delete_element':
+      return deleteElement(doc, op.elementId);
     case 'set_layout':
       if (!LAYOUT_STYLES.includes(op.layout)) {
         return { ok: false, reason: `unknown layout "${op.layout}" — valid: ${LAYOUT_STYLES.join(', ')}` };
@@ -244,6 +270,11 @@ function removeSubtree(doc: Doc, rootId: string): void {
     stack.push(...doc.nodes[id].children);
     delete doc.nodes[id];
   }
+  // Elements anchored to a deleted node go with it (undo restores them together).
+  if (doc.elements.some((e) => e.anchor && removed.has(e.anchor.nodeId))) {
+    for (const e of doc.elements) if (e.anchor && removed.has(e.anchor.nodeId)) removed.add(e.id);
+    doc.elements = doc.elements.filter((e) => !removed.has(e.id));
+  }
   // Drop arrows touching any deleted node; undo restores them with the nodes.
   if (doc.relationships.some((r) => removed.has(r.from) || removed.has(r.to))) {
     doc.relationships = doc.relationships.filter((r) => !removed.has(r.from) && !removed.has(r.to));
@@ -372,8 +403,10 @@ function detachNode(doc: Doc, nodeId: string, pos: Position): OpResult {
  */
 function addRelationship(doc: Doc, relId: string, fromId: string, toId: string, label?: string): OpResult {
   if (fromId === toId) return { ok: false, reason: 'a relationship cannot link a node to itself' };
-  if (!doc.nodes[fromId]) return { ok: false, reason: `source node ${fromId} not found` };
-  if (!doc.nodes[toId]) return { ok: false, reason: `target node ${toId} not found` };
+  // Endpoints may be nodes or canvas elements.
+  const linkable = (id: string) => !!doc.nodes[id] || doc.elements.some((e) => e.id === id);
+  if (!linkable(fromId)) return { ok: false, reason: `source node/element ${fromId} not found` };
+  if (!linkable(toId)) return { ok: false, reason: `target node/element ${toId} not found` };
   if (doc.relationships.some((r) => r.from === fromId && r.to === toId)) {
     return { ok: false, reason: `a relationship from ${fromId} to ${toId} already exists` };
   }
@@ -477,4 +510,80 @@ function deleteGroup(doc: Doc, groupId: string): OpResult {
   if (idx === -1) return { ok: false, reason: `group ${groupId} not found` };
   doc.groups.splice(idx, 1);
   return { ok: true };
+}
+
+function checkElementGeometry(e: { x?: number; y?: number; w?: number; h?: number }): string | null {
+  for (const k of ['x', 'y'] as const) {
+    if (e[k] !== undefined && !Number.isFinite(e[k])) return `${k} must be a finite number`;
+  }
+  for (const k of ['w', 'h'] as const) {
+    const v = e[k];
+    if (v !== undefined && (!Number.isFinite(v) || v < MIN_ELEMENT_SIZE || v > MAX_ELEMENT_SIZE)) {
+      return `${k} must be between ${MIN_ELEMENT_SIZE} and ${MAX_ELEMENT_SIZE}`;
+    }
+  }
+  return null;
+}
+
+function checkAnchor(doc: Doc, anchor: CanvasElement['anchor']): string | null {
+  if (!anchor) return null;
+  if (!doc.nodes[anchor.nodeId]) return `anchor node ${anchor.nodeId} not found`;
+  if (!ELEMENT_SIDES.includes(anchor.side)) return `unknown side "${anchor.side}" — valid: ${ELEMENT_SIDES.join(', ')}`;
+  return null;
+}
+
+function checkColor(color: string | null | undefined): string | null {
+  if (color == null || NODE_COLORS.includes(color as NodeColor)) return null;
+  return `unknown color "${color}" — valid colors: ${NODE_COLORS.join(', ')}`;
+}
+
+function addElement(doc: Doc, element: CanvasElement): OpResult {
+  if (doc.nodes[element.id] || doc.elements.some((e) => e.id === element.id)) {
+    return { ok: false, reason: `id ${element.id} already exists` };
+  }
+  if (!ELEMENT_KINDS.includes(element.kind)) {
+    return { ok: false, reason: `unknown element kind "${element.kind}" — valid: ${ELEMENT_KINDS.join(', ')}` };
+  }
+  if (element.text.length > MAX_ELEMENT_TEXT_LEN) return { ok: false, reason: `text exceeds ${MAX_ELEMENT_TEXT_LEN} chars` };
+  const err = checkElementGeometry(element) ?? checkAnchor(doc, element.anchor) ?? checkColor(element.color);
+  if (err) return { ok: false, reason: err };
+  const out: CanvasElement = { ...element };
+  if (out.anchor) out.anchor = { nodeId: out.anchor.nodeId, side: out.anchor.side };
+  else delete out.anchor;
+  if (!out.color) delete out.color;
+  doc.elements.push(out);
+  return { ok: true };
+}
+
+function editElement(doc: Doc, op: Extract<MapOp, { type: 'edit_element' }>): OpResult {
+  const el = doc.elements.find((e) => e.id === op.elementId);
+  if (!el) return { ok: false, reason: `element ${op.elementId} not found` };
+  if (op.text !== undefined && op.text.length > MAX_ELEMENT_TEXT_LEN) {
+    return { ok: false, reason: `text exceeds ${MAX_ELEMENT_TEXT_LEN} chars` };
+  }
+  const err = checkElementGeometry(op) ?? (op.anchor ? checkAnchor(doc, op.anchor) : null) ?? checkColor(op.color);
+  if (err) return { ok: false, reason: err };
+  // Only assign what changes: a no-op edit must produce zero patches (clean history).
+  if (op.text !== undefined && op.text !== el.text) el.text = op.text;
+  for (const k of ['x', 'y', 'w', 'h'] as const) {
+    const v = op[k];
+    if (v !== undefined && v !== el[k]) el[k] = v;
+  }
+  if (op.color === null && el.color !== undefined) delete el.color;
+  else if (op.color && op.color !== el.color) el.color = op.color;
+  if (op.anchor === null && el.anchor) delete el.anchor;
+  else if (op.anchor && (op.anchor.nodeId !== el.anchor?.nodeId || op.anchor.side !== el.anchor?.side)) {
+    el.anchor = { nodeId: op.anchor.nodeId, side: op.anchor.side };
+  }
+  return { ok: true };
+}
+
+function deleteElement(doc: Doc, elementId: string): OpResult {
+  const idx = doc.elements.findIndex((e) => e.id === elementId);
+  if (idx === -1) return { ok: false, reason: `element ${elementId} not found` };
+  doc.elements.splice(idx, 1);
+  if (doc.relationships.some((r) => r.from === elementId || r.to === elementId)) {
+    doc.relationships = doc.relationships.filter((r) => r.from !== elementId && r.to !== elementId);
+  }
+  return { ok: true, select: null };
 }

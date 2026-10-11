@@ -45,6 +45,21 @@ When the user says "this map", "this node", "here", or "the selected branch", ca
 - Arguments: `{ map_id: string, node_id?: string }`
 - Navigates every open browser tab to the map, optionally selecting a node. Use it to put your work in front of the user.
 
+### `add_element`
+
+- Arguments: `{ map_id, kind: "sticky" | "text" | "rect" | "ellipse", text?, anchor_node_id?, side?: "right" | "left" | "above" | "below", x?, y?, w?, h?, color? }`
+- A freeform canvas element outside the trees. **Prefer anchoring** (`anchor_node_id` + `side`, default right): it sits beside that node, follows it through layout changes, hides when it's collapsed, and is deleted with it. When anchored, `x`/`y` are a nudge from that spot. Free elements use `x`/`y` as world coordinates (advisory — the user drags things).
+- Text-bearing elements grow taller to fit their text; `h` is a minimum. Stickies are yellow unless `color` says otherwise.
+- Returns the element id. Also available in `apply_ops` (`add_element`, `edit_element`, `delete_element`).
+
+### `edit_element`
+
+- Arguments: `{ map_id, element_id, text?, x?, y?, w?, h?, color? ("none" clears), anchor_node_id? + side? (re-anchor), detach?: true }`
+
+### `delete_element`
+
+- Arguments: `{ map_id, element_id }` — also removes arrows touching it.
+
 ### `set_layout`
 
 - Arguments: `{ map_id: string, layout: "right" | "balanced" | "down" | "timeline" }`
@@ -228,6 +243,7 @@ interface MapFile {
   groups?: Group[];
   root: FileNode;
   floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
+  elements?: CanvasElement[];
 }
 
 interface FileNode {
@@ -244,8 +260,8 @@ interface FileNode {
 
 interface Relationship {
   id: string;
-  from: string;         // source node id
-  to: string;           // target node id
+  from: string;         // source node or element id
+  to: string;           // target node or element id
   label?: string;
 }
 
@@ -254,6 +270,16 @@ interface Group {
   members: string[];    // node ids, possibly from different parents; always ≥ 2
   label?: string;
   color?: string;       // palette name: sage | mist | clay | sand | rose
+}
+
+interface CanvasElement {
+  id: string;
+  kind: 'sticky' | 'text' | 'rect' | 'ellipse';
+  text: string;          // inline markdown; may be empty for shapes
+  w: number; h: number;  // h is a minimum — text-bearing kinds grow to fit
+  x: number; y: number;  // free: world top-left; anchored: nudge from the anchored spot
+  anchor?: { nodeId: string; side: 'right' | 'left' | 'above' | 'below' }; // follows + deleted with the node
+  color?: string;        // palette name
 }
 ```
 
@@ -329,6 +355,17 @@ This will create a root node "Trip to Japan" with four children, each with their
 1. When several nodes — possibly under different parents — share a theme an arrow can't express ("all phase 1", "the open risks"), `add_group` them with a short label.
 2. A group encloses exactly its members, not their subtrees: list every node you mean.
 3. Prefer an arrow for a pairwise directed link, a parent for containment, a group for an unordered set that belongs together.
+
+### Annotate with sticky notes, text, and shapes
+
+The trees hold the *structure*; canvas elements hold everything around it — the way a whiteboard does.
+
+1. **Sticky** (`add_element kind: "sticky"`) for commentary that isn't an idea in the hierarchy: open questions, caveats, decisions-pending, a summary of a branch. Anchor it to the node it talks about (`anchor_node_id`, `side`) — you don't know pixel coordinates, the anchor does the placing and keeps it attached when the layout changes.
+2. **Text** for a free heading or caption (e.g. `side: "above"` the root as a map subtitle).
+3. **Rect / ellipse** to mark a zone or a highlighted concept ("Risk zone" below the budget branch). Shapes don't enclose nodes — use `add_group` to enclose.
+4. Arrows can start or end on an element: `add_relationship` from a sticky to the node it questions.
+5. Several stickies on the same side of one node overlap — nudge later ones with `y` (e.g. `y: 140`), or use different sides.
+6. After placing several, `export_map` and look: fix overlaps with `edit_element` (`x`/`y` nudges, `side`, `w`).
 
 ### Brainstorm with floating trees
 

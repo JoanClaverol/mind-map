@@ -115,6 +115,8 @@ interface MapFile {
   root: FileNode;
   /** Floating trees (XMind floating topics); pos = world coords of each tree root. */
   floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
+  /** Freeform canvas elements — sticky notes, text, shapes — outside every tree. */
+  elements?: CanvasElement[];
 }
 
 interface FileNode {
@@ -130,8 +132,8 @@ interface FileNode {
 
 interface Relationship {
   id: string;
-  from: string;          // source node id
-  to: string;            // target node id
+  from: string;          // source node or element id
+  to: string;            // target node or element id
   label?: string;
 }
 
@@ -140,6 +142,16 @@ interface Group {
   members: string[];     // node ids, possibly from different parents; always ≥ 2
   label?: string;
   color?: string;        // palette name (NODE_COLORS)
+}
+
+interface CanvasElement {
+  id: string;
+  kind: 'sticky' | 'text' | 'rect' | 'ellipse';
+  text: string;          // inline markdown; may be empty for shapes
+  w: number; h: number;  // h is a minimum — text-bearing kinds grow to fit
+  x: number; y: number;  // free: world top-left; anchored: nudge from the anchored spot
+  anchor?: { nodeId: string; side: 'right' | 'left' | 'above' | 'below' }; // follows + deleted with the node
+  color?: string;        // palette name
 }
 ```
 

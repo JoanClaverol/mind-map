@@ -28,9 +28,14 @@ function Editor({ mapId }: { mapId: string }) {
   const loadedId = useStore((s) => s.mapId);
   const [error, setError] = useState<string | null>(null);
 
+  // Live sync opens FIRST and the map is fetched once the stream is up, so no
+  // AI edit can land unseen between the two (see livesync.ts). Keyed remount
+  // tears it down on switch.
   useEffect(() => {
     let cancelled = false;
-    if (useStore.getState().mapId !== mapId) {
+    const sync = initLiveSync(mapId);
+    void sync.ready.then(() => {
+      if (cancelled || useStore.getState().mapId === mapId) return;
       api
         .getMap(mapId)
         .then((map) => {
@@ -41,17 +46,12 @@ function Editor({ mapId }: { mapId: string }) {
         .catch((e: Error) => {
           if (!cancelled) setError(e.message);
         });
-    }
+    });
     return () => {
       cancelled = true;
+      sync.close();
     };
   }, [mapId]);
-
-  // Live sync starts once the map is loaded; keyed remount tears it down on switch.
-  useEffect(() => {
-    if (loadedId !== mapId) return;
-    return initLiveSync(mapId);
-  }, [loadedId, mapId]);
 
   useEffect(() => {
     const cleanup = initAutosave();

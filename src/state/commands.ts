@@ -1,7 +1,16 @@
 import type { Draft } from 'immer';
 import { newId } from '../model/doc';
-import { applyDocOp, assignIds } from '../model/ops';
-import type { BranchStyle, Doc, DocNode, FileNode, LayoutStyle, NodeColor, Position } from '../model/types';
+import { applyDocOp, assignIds, type MapOp } from '../model/ops';
+import type {
+  BranchStyle,
+  CanvasElement,
+  Doc,
+  DocNode,
+  FileNode,
+  LayoutStyle,
+  NodeColor,
+  Position,
+} from '../model/types';
 
 /**
  * Doc commands: pure mutations over an Immer draft. The store's executor wraps
@@ -205,6 +214,25 @@ export function setGroupLabel(draft: Draft<Doc>, groupId: string, label: string)
 
 export function setGroupColor(draft: Draft<Doc>, groupId: string, color: NodeColor | null): CommandResult {
   applyDocOp(draft, { type: 'edit_group', groupId, color });
+  return {};
+}
+
+export function addElement(draft: Draft<Doc>, element: CanvasElement): CommandResult {
+  applyDocOp(draft, { type: 'add_element', element });
+  return {};
+}
+
+export function editElement(
+  draft: Draft<Doc>,
+  elementId: string,
+  patch: Omit<Extract<MapOp, { type: 'edit_element' }>, 'type' | 'elementId'>,
+): CommandResult {
+  applyDocOp(draft, { type: 'edit_element', elementId, ...patch });
+  return {};
+}
+
+export function deleteElement(draft: Draft<Doc>, elementId: string): CommandResult {
+  applyDocOp(draft, { type: 'delete_element', elementId });
   return {};
 }
 

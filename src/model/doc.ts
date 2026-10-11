@@ -2,12 +2,14 @@ import { nanoid } from 'nanoid';
 import {
   BRANCH_STYLES,
   type BranchStyle,
+  type CanvasElement,
   type Doc,
   type DocNode,
   type FileNode,
   type FloatingTree,
   type Group,
   type LayoutStyle,
+  type MapFile,
   type Position,
   type Relationship,
 } from './types';
@@ -23,6 +25,7 @@ export function normalize(
   relationships: Relationship[] = [],
   floating: FloatingTree[] = [],
   groups: Group[] = [],
+  elements: CanvasElement[] = [],
 ): Doc {
   const nodes: Record<string, DocNode> = {};
   const walk = (n: FileNode) => {
@@ -47,8 +50,18 @@ export function normalize(
     walk(f.root);
     docFloating.push({ rootId: f.root.id, pos: { x: f.pos.x, y: f.pos.y } });
   }
+  // Elements anchored to a missing node are dropped (they'd have nowhere to sit).
+  const docElements = elements
+    .filter((e) => !e.anchor || nodes[e.anchor.nodeId])
+    .map((e) => ({ ...e, anchor: e.anchor ? { ...e.anchor } : undefined }))
+    .map((e) => {
+      if (!e.anchor) delete e.anchor;
+      return e;
+    });
+  const elementIds = new Set(docElements.map((e) => e.id));
   // Drop dangling/self relationships so render and commands can trust the list.
-  const rels = relationships.filter((r) => r.from !== r.to && nodes[r.from] && nodes[r.to]);
+  const linkable = (id: string) => !!nodes[id] || elementIds.has(id);
+  const rels = relationships.filter((r) => r.from !== r.to && linkable(r.from) && linkable(r.to));
   // Groups: keep only existing members (deduped); a group needs ≥ 2 to mean anything.
   const docGroups: Group[] = [];
   for (const g of groups) {
@@ -59,7 +72,32 @@ export function normalize(
     if (g.color) out.color = g.color;
     docGroups.push(out);
   }
-  return { rootId: root.id, layout, nodes, relationships: rels, floating: docFloating, groups: docGroups };
+  return {
+    rootId: root.id,
+    layout,
+    nodes,
+    relationships: rels,
+    floating: docFloating,
+    groups: docGroups,
+    elements: docElements,
+  };
+}
+
+/** The in-memory doc for a map file. */
+export function docFromMap(map: MapFile): Doc {
+  return normalize(
+    map.root,
+    map.layout ?? 'right',
+    map.relationships ?? [],
+    map.floating ?? [],
+    map.groups ?? [],
+    map.elements ?? [],
+  );
+}
+
+/** MapFile.elements from a doc, or undefined when there are none. */
+export function serializeElements(doc: Doc): CanvasElement[] | undefined {
+  return doc.elements.length ? doc.elements.map((e) => ({ ...e, anchor: e.anchor && { ...e.anchor } })) : undefined;
 }
 
 /** Flat normalized doc → nested file tree. */

@@ -1016,3 +1016,113 @@ body,
   font-family: var(--sketch-font);
   font-size: 12px;
 }
+
+/*
+ * Freeform canvas elements (⇧P sticky · ⇧T text · ⇧R rectangle · ⇧O ellipse).
+ * `.element-text` is shared with the offscreen measurer (measureElementText)
+ * and the inline editor, so heights always match what's drawn.
+ */
+.element {
+  cursor: move;
+}
+
+.element-shape {
+  fill: var(--node-bg);
+  stroke: var(--node-border);
+  stroke-width: 1.5;
+}
+
+.element.kind-sticky .element-shape {
+  fill: #fbf0c4;
+  stroke: #e3d08c;
+  filter: drop-shadow(0 2px 3px rgba(80, 64, 20, 0.16));
+}
+
+.element.kind-text .element-shape {
+  fill: transparent;
+  stroke: none;
+}
+
+.element.color-sage .element-shape { fill: #e3ecdf; stroke: #a9bc9e; }
+.element.color-mist .element-shape { fill: #e2e8ee; stroke: #a9b6c2; }
+.element.color-clay .element-shape { fill: #f4e6d6; stroke: #cfae8d; }
+.element.color-sand .element-shape { fill: #f8efd2; stroke: #d7c27f; }
+.element.color-rose .element-shape { fill: #f7e3dd; stroke: #d6a797; }
+/* Text elements stay borderless: color tints the text instead. */
+.element.kind-text.color-sage .element-shape,
+.element.kind-text.color-mist .element-shape,
+.element.kind-text.color-clay .element-shape,
+.element.kind-text.color-sand .element-shape,
+.element.kind-text.color-rose .element-shape { fill: transparent; stroke: none; }
+.element.kind-text.color-sage .element-text { color: #4f7d60; }
+.element.kind-text.color-mist .element-text { color: #4f6f93; }
+.element.kind-text.color-clay .element-text { color: #9a6639; }
+.element.kind-text.color-sand .element-text { color: #8c711a; }
+.element.kind-text.color-rose .element-text { color: #a8513f; }
+
+.element-selection {
+  fill: none;
+  stroke: var(--node-selected);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  pointer-events: none;
+}
+
+.element-resize {
+  fill: var(--node-bg);
+  stroke: var(--node-selected);
+  stroke-width: 1.5;
+  cursor: nwse-resize;
+}
+
+.element-text {
+  box-sizing: border-box;
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+  user-select: none;
+}
+
+.element-text.kind-sticky {
+  font-size: 15px;
+}
+
+.element-text.kind-text {
+  padding: 4px 2px;
+  font-size: 16px;
+}
+
+/* Shapes center their label, like a whiteboard. */
+.element-text.kind-rect,
+.element-text.kind-ellipse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.element-editor {
+  position: absolute;
+  margin: 0;
+  border: 2px solid var(--node-selected);
+  border-radius: 6px;
+  background: var(--node-bg);
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  overflow: hidden;
+  user-select: text;
+  display: block;
+}
+
+:root[data-theme='sketch'] .element-text,
+:root[data-theme='sketch'] .element-editor {
+  font-family: var(--sketch-font);
+}
+
+:root[data-theme='sketch'] .element-shape {
+  stroke-width: 1.3;
+}

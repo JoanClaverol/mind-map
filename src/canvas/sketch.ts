@@ -54,6 +54,24 @@ export function roughBox(seedKey: string, w: number, h: number): { fill: string;
   return { fill, outline };
 }
 
+/** An ellipse inscribed in w×h: [fill, sketchy border]. */
+export function roughEllipse(seedKey: string, w: number, h: number): { fill: string; outline: string } {
+  const [fill, outline] = memo(`ellipse|${seedKey}|${w}|${h}`, () =>
+    gen
+      .toPaths(
+        gen.ellipse(w / 2, h / 2, w, h, {
+          seed: seedOf(seedKey),
+          roughness: 1.1,
+          fill: '#000',
+          fillStyle: 'solid',
+          stroke: '#000',
+        }),
+      )
+      .map((p) => p.d),
+  );
+  return { fill, outline };
+}
+
 /** Any stroke path (edges, arrows, group hulls), seeded by its own geometry. */
 export function roughStroke(d: string, roughness = 0.9): string {
   return memo(`path|${roughness}|${d}`, () =>

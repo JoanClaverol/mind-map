@@ -83,7 +83,7 @@ export async function buildSvg(): Promise<SvgExport | null> {
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
   const group = svg.querySelector(':scope > g')!;
   group.setAttribute('transform', `translate(${PADDING - box.x},${PADDING - box.y})`);
-  svg.querySelectorAll('.pending').forEach((el) => el.remove());
+  svg.querySelectorAll('.pending, .element-selection, .element-resize').forEach((el) => el.remove());
   for (const cls of STATE_CLASSES) svg.querySelectorAll(`.${cls}`).forEach((el) => el.classList.remove(cls));
 
   const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ffffff';

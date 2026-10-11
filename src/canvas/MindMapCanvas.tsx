@@ -5,16 +5,20 @@ import { layoutTree } from '../layout/layout';
 import { measureText } from '../layout/measure';
 import { floatingEntry, subtreeIds, visibleIds } from '../model/doc';
 import { searchMatches, viewScope } from '../model/search';
-import type { Position } from '../model/types';
-import { addFloatingTree, detachNode, moveNode, moveTree } from '../state/commands';
+import { MIN_ELEMENT_SIZE, type CanvasElement, type Position } from '../model/types';
+import { addFloatingTree, detachNode, editElement, moveNode, moveTree } from '../state/commands';
 import { runCommandById } from '../state/registry';
 import { canvasMode, useStore } from '../state/store';
 import { distanceToNearestRect, dropTargetsEqual, resolveDropTarget, type DropTarget } from './dnd';
 import { EdgeView } from './EdgeView';
+import { ElementEditor } from './ElementEditor';
+import { layoutElements } from './elements';
+import { ElementView } from './ElementView';
 import { GroupLabelEditor } from './GroupLabelEditor';
 import { groupHull } from './groupHull';
 import { GroupView } from './GroupView';
-import { getLastLayout, setCanvasHost, setLastLayout } from './layoutCache';
+import { getLastLayout, setCanvasHost, setLastElementRects, setLastLayout } from './layoutCache';
+import type { Rect } from '../layout/layout';
 import { NodeEditor } from './NodeEditor';
 import { NodeView } from './NodeView';
 import { RelationshipLabelEditor } from './RelationshipLabelEditor';
@@ -53,6 +57,8 @@ export function MindMapCanvas() {
   const grouping = useStore((s) => s.grouping);
   const selectedGroupId = useStore((s) => s.selectedGroupId);
   const editingGroup = useStore((s) => s.editingGroup);
+  const selectedElementId = useStore((s) => s.selectedElementId);
+  const editingElement = useStore((s) => s.editingElement);
   const viewport = useStore((s) => s.viewport);
   const hoistId = useStore((s) => s.hoistId);
   const measureEpoch = useStore((s) => s.measureEpoch);
@@ -86,6 +92,89 @@ export function MindMapCanvas() {
     // measureEpoch: the node font changed, so cached sizes were dropped — re-measure.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewDoc, measureEpoch]);
+
+  // Freeform elements: anchored ones follow their node's rect, free ones sit at x/y.
+  const elementRects = useMemo(() => {
+    if (!doc || !layout) return new Map<string, Rect>();
+    const rects = layoutElements(doc, layout.rects, hoistId !== null);
+    setLastElementRects(rects);
+    return rects;
+    // measureEpoch: element text heights depend on the font too.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc, layout, hoistId, measureEpoch]);
+  // Move/resize gesture preview (committed as one edit on mouseup).
+  const [elemPreview, setElemPreview] = useState<{ id: string; dx: number; dy: number; dw: number; dh: number } | null>(
+    null,
+  );
+  const elementGesture = useRef<(() => void) | null>(null);
+  useEffect(() => () => elementGesture.current?.(), []);
+  const shownElementRect = (id: string): Rect | undefined => {
+    const r = elementRects.get(id);
+    if (!r || elemPreview?.id !== id) return r;
+    return { x: r.x + elemPreview.dx, y: r.y + elemPreview.dy, w: r.w + elemPreview.dw, h: r.h + elemPreview.dh };
+  };
+  /** Arrow endpoints can be nodes or elements. */
+  const linkRect = (id: string): Rect | undefined => layout?.rects.get(id) ?? shownElementRect(id);
+
+  // The selected element vanished (undo, AI delete) — drop the stale selection.
+  useEffect(() => {
+    if (selectedElementId && doc && !doc.elements.some((e) => e.id === selectedElementId)) {
+      useStore.getState().selectElement(null);
+    }
+  }, [selectedElementId, doc]);
+
+  const handleElementPress = (el: CanvasElement, mode: 'move' | 'resize', e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    const s = useStore.getState();
+    s.selectElement(el.id);
+    hostRef.current?.focus();
+    elementGesture.current?.();
+    const rect = elementRects.get(el.id);
+    if (!rect) return;
+    const zoom = s.viewport.zoom;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let started = false;
+    const delta = (ev: MouseEvent) => ({ dx: (ev.clientX - startX) / zoom, dy: (ev.clientY - startY) / zoom });
+    const onMove = (ev: MouseEvent) => {
+      if (!started && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD_PX) return;
+      started = true;
+      const { dx, dy } = delta(ev);
+      setElemPreview(
+        mode === 'move'
+          ? { id: el.id, dx, dy, dw: 0, dh: 0 }
+          : {
+              id: el.id,
+              dx: 0,
+              dy: 0,
+              dw: Math.max(MIN_ELEMENT_SIZE - rect.w, dx),
+              dh: Math.max(MIN_ELEMENT_SIZE - rect.h, dy),
+            },
+      );
+    };
+    const cleanup = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      elementGesture.current = null;
+      setElemPreview(null);
+    };
+    const onUp = (ev: MouseEvent) => {
+      cleanup();
+      if (!started) return;
+      const { dx, dy } = delta(ev);
+      const patch =
+        mode === 'move'
+          ? { x: Math.round(el.x + dx), y: Math.round(el.y + dy) }
+          : {
+              w: Math.round(Math.max(MIN_ELEMENT_SIZE, rect.w + dx)),
+              h: Math.round(Math.max(MIN_ELEMENT_SIZE, rect.h + dy)),
+            };
+      useStore.getState().runCommand(mode === 'move' ? 'moveElement' : 'resizeElement', (d) => editElement(d, el.id, patch));
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    elementGesture.current = cleanup;
+  };
 
   // Live search (panel open) or a pinned filter dims every non-matching node.
   const activeQuery = searchOpen ? searchQuery : (filterQuery ?? '');
@@ -262,7 +351,7 @@ export function MindMapCanvas() {
       return;
     }
     const st = useStore.getState();
-    if (st.editing || st.editingRel || st.editingGroup) return; // an editor owns the keyboard
+    if (st.editing || st.editingRel || st.editingGroup || st.editingElement) return; // an editor owns the keyboard
     const combo = comboFromEvent(e);
     // Drawing an arrow/group or with one selected swaps in a mode-specific keymap.
     const context = canvasMode(st) ?? 'nav';
@@ -284,6 +373,7 @@ export function MindMapCanvas() {
     // Only drag-pan when the press starts on empty canvas (nodes/arrows/groups stopPropagation).
     useStore.getState().selectRelationship(null); // clicking blank canvas deselects an arrow
     useStore.getState().selectGroup(null); // …and a group
+    useStore.getState().selectElement(null); // …and an element
     panState.current = { startX: e.clientX, startY: e.clientY, vpX: viewport.x, vpY: viewport.y };
     const onMove = (ev: MouseEvent) => {
       const d = panState.current;
@@ -334,8 +424,8 @@ export function MindMapCanvas() {
 
   // Where the label editor floats, if open.
   const editingRelData = editingRel ? doc.relationships.find((r) => r.id === editingRel.relId) : undefined;
-  const editFrom = editingRelData ? layout.rects.get(editingRelData.from) : undefined;
-  const editTo = editingRelData ? layout.rects.get(editingRelData.to) : undefined;
+  const editFrom = editingRelData ? linkRect(editingRelData.from) : undefined;
+  const editTo = editingRelData ? linkRect(editingRelData.to) : undefined;
   const editingRelMid = editFrom && editTo ? relationshipGeometry(editFrom, editTo).mid : undefined;
 
   // Visible member rects per group (hidden members drop out of the hull).
@@ -368,6 +458,24 @@ export function MindMapCanvas() {
           </marker>
         </defs>
         <g transform={`translate(${viewport.x},${viewport.y}) scale(${viewport.zoom})`}>
+          <g className="elements">
+            {doc.elements.map((el) => {
+              const rect = shownElementRect(el.id);
+              if (!rect) return null;
+              return (
+                <ElementView
+                  key={el.id}
+                  el={el}
+                  rect={rect}
+                  selected={el.id === selectedElementId}
+                  editing={editingElement?.elementId === el.id}
+                  onPress={(e) => handleElementPress(el, 'move', e)}
+                  onResizePress={(e) => handleElementPress(el, 'resize', e)}
+                  onEdit={() => useStore.getState().startEditElement(el.id)}
+                />
+              );
+            })}
+          </g>
           <g className="groups">
             {doc.groups.map((group) => {
               // While re-editing this group's members, the pending hull replaces it.
@@ -440,8 +548,8 @@ export function MindMapCanvas() {
           </g>
           <g className="relationships">
             {doc.relationships.map((rel) => {
-              const from = layout.rects.get(rel.from);
-              const to = layout.rects.get(rel.to);
+              const from = linkRect(rel.from);
+              const to = linkRect(rel.to);
               if (!from || !to) return null; // an endpoint is collapsed/hidden
               return (
                 <RelationshipView
@@ -506,6 +614,14 @@ export function MindMapCanvas() {
           key={editingRel.relId}
           relId={editingRel.relId}
           mid={editingRelMid}
+          onDone={() => hostRef.current?.focus()}
+        />
+      )}
+      {editingElement && elementRects.get(editingElement.elementId) && (
+        <ElementEditor
+          key={editingElement.elementId}
+          elementId={editingElement.elementId}
+          rect={elementRects.get(editingElement.elementId)!}
           onDone={() => hostRef.current?.focus()}
         />
       )}

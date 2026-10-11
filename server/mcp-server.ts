@@ -3,16 +3,22 @@ import { nanoid } from 'nanoid';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { denormalize, normalize, serializeFloating, subtreeIds } from '../src/model/doc';
+import { denormalize, docFromMap, serializeElements, serializeFloating, subtreeIds } from '../src/model/doc';
 import { branchToMarkdown, markdownToBranches } from '../src/model/markdown';
 import { applyDocOp, assignIds, type MapOp } from '../src/model/ops';
 import {
   BRANCH_STYLES,
+  ELEMENT_DEFAULT_SIZE,
+  ELEMENT_KINDS,
+  ELEMENT_SIDES,
   LAYOUT_STYLES,
   NODE_COLORS,
   SCHEMA_VERSION,
   type BranchStyle,
+  type CanvasElement,
   type Doc,
+  type ElementKind,
+  type ElementSide,
   type FileNode,
   type LayoutStyle,
   type MapFile,
@@ -61,7 +67,7 @@ async function mutateMap(
   if (!storage.isValidId(mapId)) return { error: 'invalid map id' };
   type Failure = { error: string; failedIndex?: number };
   const result = await storage.updateMap<MapFile | Failure>(mapId, (map) => {
-    const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
+    const doc = docFromMap(map);
     for (let i = 0; i < ops.length; i++) {
       const r = applyDocOp(doc, ops[i]);
       if (!r.ok) return { error: r.reason, failedIndex: i };
@@ -75,6 +81,9 @@ async function mutateMap(
     const floating = serializeFloating(doc);
     if (floating) updated.floating = floating;
     else delete updated.floating;
+    const elements = serializeElements(doc);
+    if (elements) updated.elements = elements;
+    else delete updated.elements;
     return updated;
   });
   if (!result) return { error: 'map not found' };
@@ -115,12 +124,20 @@ function truncateText(text: string, max = 40): string {
  * With `scope`, only arrows touching one of those node ids are included
  * (used by get_subtree so a branch read shows its cross-links).
  */
+/** `id ("text")` for a node or a canvas element (arrows can end on either). */
+function describeEndpoint(doc: Doc, id: string): string {
+  const node = doc.nodes[id];
+  if (node) return `${id} ("${truncateText(node.text)}")`;
+  const el = doc.elements.find((e) => e.id === id);
+  return el ? `${id} (${el.kind} "${truncateText(el.text)}")` : id;
+}
+
 function relationshipsSection(doc: Doc, scope?: Set<string>): string | null {
   const rels = doc.relationships.filter((r) => !scope || scope.has(r.from) || scope.has(r.to));
   if (rels.length === 0) return null;
   const lines = rels.map((r) => {
-    const from = `${r.from} ("${truncateText(doc.nodes[r.from].text)}")`;
-    const to = `${r.to} ("${truncateText(doc.nodes[r.to].text)}")`;
+    const from = describeEndpoint(doc, r.from);
+    const to = describeEndpoint(doc, r.to);
     return `- [${r.id}] ${from} -> ${to}${r.label ? ` — "${r.label}"` : ''}`;
   });
   return `## Relationships\n${lines.join('\n')}`;
@@ -138,6 +155,23 @@ function groupsSection(doc: Doc, scope?: Set<string>): string | null {
     return `- [${g.id}]${g.label ? ` "${g.label}"` : ''} — members: ${members}`;
   });
   return `## Groups\n${lines.join('\n')}`;
+}
+
+/**
+ * The canvas elements as a markdown section, or null when there are none.
+ * With `scope`, only elements anchored to a node in scope are included.
+ */
+function elementsSection(doc: Doc, scope?: Set<string>): string | null {
+  const els = doc.elements.filter((e) => !scope || (e.anchor && scope.has(e.anchor.nodeId)));
+  if (els.length === 0) return null;
+  const lines = els.map((e) => {
+    const where = e.anchor
+      ? `${e.anchor.side} of ${describeEndpoint(doc, e.anchor.nodeId)}${e.x || e.y ? `, nudged (${e.x}, ${e.y})` : ''}`
+      : `free at (${e.x}, ${e.y})`;
+    const color = e.color ? ` [${e.color}]` : '';
+    return `- [${e.id}] ${e.kind}${color} ${e.w}×${e.h}, ${where}${e.text ? ` — "${truncateText(e.text, 80)}"` : ''}`;
+  });
+  return `## Canvas elements\n${lines.join('\n')}`;
 }
 
 async function readTextFile(...segments: string[]): Promise<string | null> {
@@ -165,6 +199,8 @@ interface MapFile {
   groups?: Array<{ id: string; members: string[]; label?: string; color?: string }>;
   root: FileNode;
   floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
+  // Freeform sticky notes / text / shapes; anchored ones sit beside a node and follow it
+  elements?: Array<{ id: string; kind: 'sticky' | 'text' | 'rect' | 'ellipse'; text: string; w: number; h: number; x: number; y: number; anchor?: { nodeId: string; side: 'right' | 'left' | 'above' | 'below' }; color?: string }>;
 }
 
 interface FileNode {
@@ -190,6 +226,76 @@ const styleDescription =
 
 function toStyle(style: string | undefined): BranchStyle | null | undefined {
   return style === undefined ? undefined : style === 'inherit' ? null : (style as BranchStyle);
+}
+
+
+const KIND_CHOICES = ELEMENT_KINDS as unknown as [ElementKind, ...ElementKind[]];
+const SIDE_CHOICES = ELEMENT_SIDES as unknown as [string, ...string[]];
+const elementFields = {
+  text: z.string().optional().describe('Text (inline markdown). Optional for rect/ellipse'),
+  anchor_node_id: z
+    .string()
+    .optional()
+    .describe('Attach beside this node: it follows the node through layout changes and is deleted with it. Preferred over x/y'),
+  side: z.enum(SIDE_CHOICES).optional().describe('Which side of the anchor node (default right)'),
+  x: z.number().optional().describe('Free: world x of the top-left. Anchored: horizontal nudge from the anchored spot'),
+  y: z.number().optional().describe('Free: world y of the top-left. Anchored: vertical nudge'),
+  w: z.number().optional().describe('Width in px (text-bearing kinds grow taller to fit their text)'),
+  h: z.number().optional().describe('Minimum height in px'),
+  color: z.enum([...NODE_COLORS, 'none']).optional().describe('Palette color; stickies default to yellow'),
+};
+
+type ElementArgs = {
+  kind: ElementKind;
+  text?: string;
+  anchor_node_id?: string;
+  side?: string;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  color?: string;
+};
+
+/** A new element from tool args. Free elements without x/y land below the map (advisory). */
+function buildElement(args: ElementArgs, map: MapFile, index: number): CanvasElement {
+  const size = ELEMENT_DEFAULT_SIZE[args.kind];
+  const el: CanvasElement = {
+    id: nanoid(12),
+    kind: args.kind,
+    text: args.text?.trim() ?? '',
+    w: args.w ?? size.w,
+    h: args.h ?? size.h,
+    x: args.x ?? 0,
+    y: args.y ?? 0,
+  };
+  if (args.anchor_node_id) {
+    el.anchor = { nodeId: args.anchor_node_id, side: (args.side ?? 'right') as ElementSide };
+  } else if (args.x === undefined || args.y === undefined) {
+    const spot = defaultTreePos(map, index);
+    el.x = args.x ?? spot.x + 320;
+    el.y = args.y ?? spot.y;
+  }
+  if (args.color && args.color !== 'none') el.color = args.color;
+  return el;
+}
+
+type ElementPatchArgs = Omit<Partial<ElementArgs>, 'kind'> & { detach?: boolean };
+
+function elementPatch(args: ElementPatchArgs): Omit<Extract<MapOp, { type: 'edit_element' }>, 'type' | 'elementId'> {
+  return {
+    text: args.text,
+    x: args.x,
+    y: args.y,
+    w: args.w,
+    h: args.h,
+    color: args.color === undefined ? undefined : args.color === 'none' ? null : (args.color as NodeColor),
+    anchor: args.detach
+      ? null
+      : args.anchor_node_id
+        ? { nodeId: args.anchor_node_id, side: (args.side ?? 'right') as ElementSide }
+        : undefined,
+  };
 }
 
 export function createMcpServer(): McpServer {
@@ -243,11 +349,13 @@ export function createMcpServer(): McpServer {
       if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
-      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
+      const doc = docFromMap(map);
       const markdown = branchToMarkdown(doc, map.root.id, { ids: true, meta: true });
       const floatingBlocks = doc.floating.map((f) => branchToMarkdown(doc, f.rootId, { ids: true, meta: true }));
       const floatingSection = floatingBlocks.length ? `\n\n## Floating trees\n${floatingBlocks.join('\n\n')}` : '';
-      const sections = [relationshipsSection(doc), groupsSection(doc)].filter((s): s is string => s !== null);
+      const sections = [relationshipsSection(doc), groupsSection(doc), elementsSection(doc)].filter(
+        (s): s is string => s !== null,
+      );
       const tail = sections.length ? `\n\n${sections.join('\n\n')}` : '';
       return {
         content: [{ type: 'text', text: `# ${map.title}\n\n${markdown}${floatingSection}${tail}` }],
@@ -270,11 +378,11 @@ export function createMcpServer(): McpServer {
       if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
-      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
+      const doc = docFromMap(map);
       if (!doc.nodes[args.node_id]) return errorResult(`node ${args.node_id} not found`);
       const markdown = branchToMarkdown(doc, args.node_id, { ids: true, meta: true, maxDepth: args.depth });
       const scope = new Set(subtreeIds(doc, args.node_id));
-      const sections = [relationshipsSection(doc, scope), groupsSection(doc, scope)].filter(
+      const sections = [relationshipsSection(doc, scope), groupsSection(doc, scope), elementsSection(doc, scope)].filter(
         (s): s is string => s !== null,
       );
       return { content: [{ type: 'text', text: `${markdown}${sections.length ? `\n\n${sections.join('\n\n')}` : ''}` }] };
@@ -543,11 +651,11 @@ export function createMcpServer(): McpServer {
     'add_relationship',
     {
       description:
-        'Draws a labeled directional arrow between any two nodes — a free cross-link connecting ideas, not a parent/child edge. Returns the relationship id for later edit/delete. Self-links and duplicate from→to arrows are rejected. The edit appears live in an open browser tab and is undoable there.',
+        'Draws a labeled directional arrow between any two nodes or canvas elements — a free cross-link connecting ideas, not a parent/child edge. Returns the relationship id for later edit/delete. Self-links and duplicate from→to arrows are rejected. The edit appears live in an open browser tab and is undoable there.',
       inputSchema: z.object({
         map_id: z.string().describe('The map id'),
-        from_id: z.string().describe('Source node id'),
-        to_id: z.string().describe('Target node id'),
+        from_id: z.string().describe('Source node or element id'),
+        to_id: z.string().describe('Target node or element id'),
         label: z.string().optional().describe('Optional label shown on the arrow'),
       }),
     },
@@ -724,6 +832,14 @@ export function createMcpServer(): McpServer {
       style: z.enum(STYLE_CHOICES).optional(),
     }),
     z.object({ op: z.literal('set_layout'), layout: z.enum(LAYOUT_STYLES as [LayoutStyle, ...LayoutStyle[]]) }),
+    z.object({ op: z.literal('add_element'), kind: z.enum(KIND_CHOICES), ...elementFields }),
+    z.object({
+      op: z.literal('edit_element'),
+      element_id: z.string(),
+      ...elementFields,
+      detach: z.boolean().optional(),
+    }),
+    z.object({ op: z.literal('delete_element'), element_id: z.string() }),
   ]);
 
   server.registerTool(
@@ -856,6 +972,25 @@ export function createMcpServer(): McpServer {
             ops.push({ type: 'set_layout', layout: item.layout });
             summaries.push(`[${i}] set_layout ${item.layout}`);
             break;
+          case 'add_element': {
+            if (!mapForPos) {
+              if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
+              mapForPos = await storage.readMap(args.map_id);
+              if (!mapForPos) return errorResult('map not found');
+            }
+            const element = buildElement(item, mapForPos, autoPlaced++);
+            ops.push({ type: 'add_element', element });
+            summaries.push(`[${i}] add_element ${element.kind} ${element.id}`);
+            break;
+          }
+          case 'edit_element':
+            ops.push({ type: 'edit_element', elementId: item.element_id, ...elementPatch(item) });
+            summaries.push(`[${i}] edit_element ${item.element_id}`);
+            break;
+          case 'delete_element':
+            ops.push({ type: 'delete_element', elementId: item.element_id });
+            summaries.push(`[${i}] delete_element ${item.element_id}`);
+            break;
         }
       }
       const r = await mutateMap(args.map_id, ops);
@@ -895,6 +1030,60 @@ export function createMcpServer(): McpServer {
           { type: 'text', text: `Created map "${map.title}" (id: ${map.id})\n${outlineWithIds([map.root])}` },
         ],
       };
+    },
+  );
+
+  server.registerTool(
+    'add_element',
+    {
+      description:
+        'Adds a freeform canvas element (Excalidraw-style, outside the trees): sticky (a note — callouts, caveats, open questions, summaries), text (a free heading/caption), rect or ellipse (a shape, e.g. a zone or a highlighted concept). Anchor it to a node with anchor_node_id + side to place it beside that node without knowing pixel coordinates — it follows the node through layout changes. Arrows (add_relationship) can connect elements and nodes. Returns the element id. Live and undoable in the browser.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        kind: z.enum(KIND_CHOICES),
+        ...elementFields,
+      }),
+    },
+    async (args) => {
+      if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
+      const map = await storage.readMap(args.map_id);
+      if (!map) return errorResult('map not found');
+      const element = buildElement(args, map, 0);
+      const r = await mutateMap(args.map_id, [{ type: 'add_element', element }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Added ${element.kind} ${element.id}` }] };
+    },
+  );
+
+  server.registerTool(
+    'edit_element',
+    {
+      description:
+        'Changes a canvas element: text, color ("none" clears), size (w/h), position (x/y — a nudge when anchored), re-anchor (anchor_node_id + side), or detach: true to free it from its node (it keeps x/y as world coordinates — set them). Absent fields are untouched. Live and undoable.',
+      inputSchema: z.object({
+        map_id: z.string().describe('The map id'),
+        element_id: z.string().describe('Element id (from add_element or read_map_markdown)'),
+        ...elementFields,
+        detach: z.boolean().optional().describe('Free the element from its anchor node'),
+      }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [{ type: 'edit_element', elementId: args.element_id, ...elementPatch(args) }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Updated element ${args.element_id}` }] };
+    },
+  );
+
+  server.registerTool(
+    'delete_element',
+    {
+      description: 'Deletes a canvas element (and arrows touching it). Live and undoable.',
+      inputSchema: z.object({ map_id: z.string().describe('The map id'), element_id: z.string() }),
+    },
+    async (args) => {
+      const r = await mutateMap(args.map_id, [{ type: 'delete_element', elementId: args.element_id }]);
+      if ('error' in r) return errorResult(r.error);
+      return { content: [{ type: 'text', text: `Deleted element ${args.element_id}` }] };
     },
   );
 
@@ -940,7 +1129,7 @@ export function createMcpServer(): McpServer {
       if (!view.mapId) return { content: [{ type: 'text', text: `The user is in the map gallery (reported ${age}s ago).` }] };
       const map = await storage.readMap(view.mapId);
       if (!map) return { content: [{ type: 'text', text: `The open map ${view.mapId} no longer exists on disk.` }] };
-      const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
+      const doc = docFromMap(map);
       const lines = [`Open map: "${map.title}" (id: ${map.id}, layout: ${doc.layout}, reported ${age}s ago)`];
       if (view.hoistId && doc.nodes[view.hoistId]) {
         lines.push(`Hoisted on: ${view.hoistId} "${doc.nodes[view.hoistId].text}" (the user only sees this branch)`);

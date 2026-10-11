@@ -1,6 +1,6 @@
 import { applyPatches, enablePatches, produceWithPatches, type Draft, type Patch } from 'immer';
 import { create } from 'zustand';
-import { normalize } from '../model/doc';
+import { docFromMap } from '../model/doc';
 import type { Doc, FolderInfo, MapFile, MapMeta, Viewport } from '../model/types';
 import { setCollapsedFolders } from '../gallery/recents';
 import type { CommandResult } from './commands';
@@ -56,6 +56,10 @@ interface StoreState {
   grouping: { members: string[]; editingGroupId: string | null } | null;
   /** An existing group is selected (for delete / edit-label / recolor). Cleared whenever a node is selected. */
   selectedGroupId: string | null;
+  /** A freeform canvas element (sticky/text/shape) is selected — mutually exclusive with arrow/group. */
+  selectedElementId: string | null;
+  /** Inline text editor open on an element. */
+  editingElement: { elementId: string } | null;
   /** The group whose label is being edited. */
   editingGroup: { groupId: string } | null;
   viewport: Viewport;
@@ -123,6 +127,9 @@ interface StoreState {
   toggleGroupingMember(): void;
   cancelGrouping(): void;
   selectGroup(id: string | null): void;
+  selectElement(id: string | null): void;
+  startEditElement(elementId: string): void;
+  setEditingElement(v: { elementId: string } | null): void;
   startEditGroup(groupId: string): void;
   setEditingGroup(v: { groupId: string } | null): void;
   setViewport(viewport: Viewport): void;
@@ -175,12 +182,13 @@ function clampSelection(doc: Doc, id: string | null): string {
  * keymap context (MindMapCanvas) and the status-bar hints, so they never drift.
  */
 export function canvasMode(
-  s: Pick<StoreState, 'linking' | 'grouping' | 'selectedRelId' | 'selectedGroupId'>,
-): 'link' | 'group' | 'relsel' | 'groupsel' | null {
+  s: Pick<StoreState, 'linking' | 'grouping' | 'selectedRelId' | 'selectedGroupId' | 'selectedElementId'>,
+): 'link' | 'group' | 'relsel' | 'groupsel' | 'elemsel' | null {
   if (s.linking) return 'link';
   if (s.grouping) return 'group';
   if (s.selectedRelId) return 'relsel';
   if (s.selectedGroupId) return 'groupsel';
+  if (s.selectedElementId) return 'elemsel';
   return null;
 }
 
@@ -198,6 +206,8 @@ export const useStore = create<StoreState>((set, get) => ({
   grouping: null,
   selectedGroupId: null,
   editingGroup: null,
+  selectedElementId: null,
+  editingElement: null,
   viewport: { x: 60, y: 60, zoom: 1 },
   rev: 0,
   savedRev: 0,
@@ -223,7 +233,7 @@ export const useStore = create<StoreState>((set, get) => ({
   measureEpoch: 0,
 
   loadMap(map) {
-    const doc = normalize(map.root, map.layout ?? 'right', map.relationships ?? [], map.floating ?? [], map.groups ?? []);
+    const doc = docFromMap(map);
     set({
       mapId: map.id,
       title: map.title,
@@ -238,6 +248,8 @@ export const useStore = create<StoreState>((set, get) => ({
       grouping: null,
       selectedGroupId: null,
       editingGroup: null,
+      selectedElementId: null,
+      editingElement: null,
       needsFit: !map.viewport,
       viewport: map.viewport ?? { x: 60, y: 60, zoom: 1 },
       rev: 0,
@@ -268,6 +280,8 @@ export const useStore = create<StoreState>((set, get) => ({
       grouping: null,
       selectedGroupId: null,
       editingGroup: null,
+      selectedElementId: null,
+      editingElement: null,
       rev: 0,
       savedRev: 0,
       saveState: 'idle',
@@ -345,7 +359,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   select(id) {
-    set({ selectedId: id, selectedRelId: null, selectedGroupId: null });
+    set({ selectedId: id, selectedRelId: null, selectedGroupId: null, selectedElementId: null });
   },
 
   startLinking() {
@@ -361,7 +375,7 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   selectRelationship(id) {
-    set(id === null ? { selectedRelId: null } : { selectedRelId: id, selectedGroupId: null });
+    set(id === null ? { selectedRelId: null } : { selectedRelId: id, selectedGroupId: null, selectedElementId: null });
   },
 
   startEditRel(relId) {
@@ -406,7 +420,25 @@ export const useStore = create<StoreState>((set, get) => ({
   },
 
   selectGroup(id) {
-    set(id === null ? { selectedGroupId: null } : { selectedGroupId: id, selectedRelId: null });
+    set(id === null ? { selectedGroupId: null } : { selectedGroupId: id, selectedRelId: null, selectedElementId: null });
+  },
+
+  selectElement(id) {
+    set(
+      id === null
+        ? { selectedElementId: null }
+        : { selectedElementId: id, selectedRelId: null, selectedGroupId: null, linking: null, grouping: null },
+    );
+  },
+
+  startEditElement(elementId) {
+    const { doc } = get();
+    if (!doc || !doc.elements.some((e) => e.id === elementId)) return;
+    set({ editingElement: { elementId }, selectedElementId: elementId, selectedRelId: null, selectedGroupId: null });
+  },
+
+  setEditingElement(v) {
+    set({ editingElement: v });
   },
 
   startEditGroup(groupId) {

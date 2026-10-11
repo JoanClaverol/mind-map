@@ -7,8 +7,19 @@ import { splitBalanced } from '../layout/layout';
 import { branchStyleOf, buildParentMap, effectiveStyleAt, newId } from '../model/doc';
 import { branchToMarkdown, markdownToBranches } from '../model/markdown';
 import { viewScope } from '../model/search';
-import { BRANCH_STYLES, LAYOUT_LABELS, LAYOUT_STYLES, NODE_COLORS, type BranchStyle, type MapMeta, type NodeColor } from '../model/types';
-import { getCanvasHost, getLastLayout } from '../canvas/layoutCache';
+import {
+  BRANCH_STYLES,
+  ELEMENT_DEFAULT_SIZE,
+  LAYOUT_LABELS,
+  LAYOUT_STYLES,
+  NODE_COLORS,
+  type BranchStyle,
+  type CanvasElement,
+  type ElementKind,
+  type MapMeta,
+  type NodeColor,
+} from '../model/types';
+import { contentBounds, getCanvasHost, getLastLayout } from '../canvas/layoutCache';
 import { fitToContent, zoomAt } from '../canvas/viewport';
 import { buildSvg, download, exportFileName, svgToPng } from '../canvas/exportImage';
 import { applySketchTheme, saveSketchPref } from '../canvas/sketch';
@@ -293,7 +304,94 @@ function floatingTreeSpot(): { x: number; y: number } {
   return center;
 }
 
+/**
+ * Create a canvas element. A sticky with a node selected attaches beside that
+ * node (annotating it); everything else lands free at the view center.
+ */
+function addElement(kind: ElementKind): void {
+  const s = state();
+  if (!s.doc) return;
+  const size = ELEMENT_DEFAULT_SIZE[kind];
+  const anchorTo = kind === 'sticky' && s.selectedId && s.doc.nodes[s.selectedId] ? s.selectedId : null;
+  let element: CanvasElement;
+  if (anchorTo) {
+    element = { id: newId(), kind, text: '', ...size, x: 0, y: 0, anchor: { nodeId: anchorTo, side: 'right' } };
+    // Several stickies on one node stack downward instead of piling up.
+    const stacked = s.doc.elements.filter((e) => e.anchor?.nodeId === anchorTo && e.anchor.side === 'right').length;
+    element.y = stacked * (size.h + 16);
+  } else {
+    if (s.hoistId) {
+      s.addToast('info', 'Free elements are hidden while hoisted — select a node for a sticky, or Esc first');
+      return;
+    }
+    const { w, h } = hostSize();
+    element = {
+      id: newId(),
+      kind,
+      text: '',
+      ...size,
+      x: Math.round((w / 2 - s.viewport.x) / s.viewport.zoom - size.w / 2),
+      y: Math.round((h / 2 - s.viewport.y) / s.viewport.zoom - size.h / 2),
+    };
+  }
+  s.runCommand(`add_${kind}`, (d) => cmd.addElement(d, element));
+  state().selectElement(element.id);
+  if (kind === 'sticky' || kind === 'text') state().startEditElement(element.id);
+}
+
+function withElement(fn: (el: CanvasElement) => void): void {
+  const s = state();
+  const el = s.doc?.elements.find((e) => e.id === s.selectedElementId);
+  if (el) fn(el);
+}
+
+function nudge(dx: number, dy: number): void {
+  withElement((el) =>
+    state().runCommand('nudgeElement', (d) => cmd.editElement(d, el.id, { x: el.x + dx, y: el.y + dy })),
+  );
+}
+
+const NUDGE = 10;
+const NUDGE_FAR = 50;
+
 export const registry: Record<string, AppCommand> = {
+  'element.addSticky': {
+    description: 'Add a sticky note (beside the selected node) and edit it',
+    run: () => addElement('sticky'),
+  },
+  'element.addText': { description: 'Add free text at the view center', run: () => addElement('text') },
+  'element.addRect': { description: 'Add a rectangle at the view center', run: () => addElement('rect') },
+  'element.addEllipse': { description: 'Add an ellipse at the view center', run: () => addElement('ellipse') },
+  'element.edit': {
+    description: 'Edit the selected element\'s text',
+    run: () => withElement((el) => state().startEditElement(el.id)),
+  },
+  'element.cycleColor': {
+    description: 'Cycle the selected element\'s color',
+    run: () =>
+      withElement((el) => {
+        const idx = el.color ? NODE_COLORS.indexOf(el.color as NodeColor) : -1;
+        const next = idx + 1 < NODE_COLORS.length ? NODE_COLORS[idx + 1] : null;
+        state().runCommand('setElementColor', (d) => cmd.editElement(d, el.id, { color: next }));
+      }),
+  },
+  'element.nudgeLeft': { description: 'Nudge the element left', run: () => nudge(-NUDGE, 0) },
+  'element.nudgeRight': { description: 'Nudge the element right', run: () => nudge(NUDGE, 0) },
+  'element.nudgeUp': { description: 'Nudge the element up', run: () => nudge(0, -NUDGE) },
+  'element.nudgeDown': { description: 'Nudge the element down', run: () => nudge(0, NUDGE) },
+  'element.nudgeLeftFar': { description: 'Nudge the element far left', run: () => nudge(-NUDGE_FAR, 0) },
+  'element.nudgeRightFar': { description: 'Nudge the element far right', run: () => nudge(NUDGE_FAR, 0) },
+  'element.nudgeUpFar': { description: 'Nudge the element far up', run: () => nudge(0, -NUDGE_FAR) },
+  'element.nudgeDownFar': { description: 'Nudge the element far down', run: () => nudge(0, NUDGE_FAR) },
+  'element.delete': {
+    description: 'Delete the selected element',
+    run: () =>
+      withElement((el) => {
+        state().runCommand('deleteElement', (d) => cmd.deleteElement(d, el.id));
+        state().selectElement(null);
+      }),
+  },
+  'element.deselect': { description: 'Deselect the element', run: () => state().selectElement(null) },
   'tree.addFloating': {
     description: 'Add a floating tree at the view center and edit it',
     run: () => {
@@ -624,10 +722,10 @@ export const registry: Record<string, AppCommand> = {
   'view.fit': {
     description: 'Fit the whole map in view',
     run: () => {
-      const layout = getLastLayout();
-      if (!layout) return;
+      const bounds = contentBounds();
+      if (!bounds) return;
       const { w, h } = hostSize();
-      state().setViewport(fitToContent(layout.bounds, w, h));
+      state().setViewport(fitToContent(bounds, w, h));
     },
   },
   'view.toggleSketch': {

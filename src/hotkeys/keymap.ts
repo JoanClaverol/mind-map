@@ -1,4 +1,4 @@
-export type Context = 'nav' | 'edit' | 'gallery' | 'link' | 'relsel' | 'group' | 'groupsel';
+export type Context = 'nav' | 'edit' | 'gallery' | 'link' | 'relsel' | 'group' | 'groupsel' | 'elemsel';
 
 export interface Binding {
   /** Normalized combo: "[mod+][shift+][alt+]key", e.g. "tab", "mod+shift+z", "h". */
@@ -72,6 +72,32 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'delete', context: 'groupsel', command: 'group.delete' },
   { combo: 'backspace', context: 'groupsel', command: 'group.delete' },
   { combo: 'escape', context: 'groupsel', command: 'group.deselect' },
+  // freeform canvas elements (capitals shadow type-to-edit, like A/G/H/J/K/L):
+  // ⇧P sticky (Post-it — beside the selected node), ⇧T text, ⇧R rectangle, ⇧O ellipse (Oval)
+  { combo: 'shift+p', context: 'nav', command: 'element.addSticky' },
+  { combo: 'shift+t', context: 'nav', command: 'element.addText' },
+  { combo: 'shift+r', context: 'nav', command: 'element.addRect' },
+  { combo: 'shift+o', context: 'nav', command: 'element.addEllipse' },
+  // when an element is selected: enter edits, c recolors, hjkl nudges (⇧ = 5×), delete removes
+  { combo: 'enter', context: 'elemsel', command: 'element.edit' },
+  { combo: 'c', context: 'elemsel', command: 'element.cycleColor' },
+  { combo: 'h', context: 'elemsel', command: 'element.nudgeLeft' },
+  { combo: 'arrowleft', context: 'elemsel', command: 'element.nudgeLeft' },
+  { combo: 'l', context: 'elemsel', command: 'element.nudgeRight' },
+  { combo: 'arrowright', context: 'elemsel', command: 'element.nudgeRight' },
+  { combo: 'k', context: 'elemsel', command: 'element.nudgeUp' },
+  { combo: 'arrowup', context: 'elemsel', command: 'element.nudgeUp' },
+  { combo: 'j', context: 'elemsel', command: 'element.nudgeDown' },
+  { combo: 'arrowdown', context: 'elemsel', command: 'element.nudgeDown' },
+  { combo: 'shift+h', context: 'elemsel', command: 'element.nudgeLeftFar' },
+  { combo: 'shift+l', context: 'elemsel', command: 'element.nudgeRightFar' },
+  { combo: 'shift+k', context: 'elemsel', command: 'element.nudgeUpFar' },
+  { combo: 'shift+j', context: 'elemsel', command: 'element.nudgeDownFar' },
+  { combo: 'delete', context: 'elemsel', command: 'element.delete' },
+  { combo: 'backspace', context: 'elemsel', command: 'element.delete' },
+  { combo: 'escape', context: 'elemsel', command: 'element.deselect' },
+  { combo: 'mod+z', context: 'elemsel', command: 'history.undo' },
+  { combo: 'mod+shift+z', context: 'elemsel', command: 'history.redo' },
   // history
   { combo: 'mod+z', context: 'nav', command: 'history.undo' },
   { combo: 'mod+shift+z', context: 'nav', command: 'history.redo' },

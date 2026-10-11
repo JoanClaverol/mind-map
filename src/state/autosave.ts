@@ -1,5 +1,5 @@
 import { api } from '../api/client';
-import { denormalize, serializeFloating } from '../model/doc';
+import { denormalize, serializeElements, serializeFloating } from '../model/doc';
 import { SCHEMA_VERSION, type MapFile } from '../model/types';
 import { useStore } from './store';
 
@@ -24,6 +24,7 @@ function buildMapFile(): MapFile | null {
     groups: s.doc.groups.length ? s.doc.groups : undefined,
     root: denormalize(s.doc),
     floating: serializeFloating(s.doc),
+    elements: serializeElements(s.doc),
   };
 }
 

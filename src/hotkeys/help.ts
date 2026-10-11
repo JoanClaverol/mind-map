@@ -21,6 +21,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   clipboard: 'Clipboard',
   history: 'History',
   tree: 'Floating trees',
+  element: 'Canvas elements',
+  export: 'Export',
   map: 'Map',
   view: 'View',
   gallery: 'Gallery',

@@ -1,5 +1,5 @@
 import { api } from '../api/client';
-import { denormalize, serializeFloating } from '../model/doc';
+import { denormalize, serializeElements, serializeFloating } from '../model/doc';
 import { applyDocOp, type MapOp } from '../model/ops';
 import { useStore } from './store';
 
@@ -14,13 +14,38 @@ import { useStore } from './store';
  * That makes browser-last-write-wins correct even when the MCP read-modify-
  * write briefly clobbered unsaved local keystrokes in the file.
  *
- * Known limit: if the SSE stream is down while MCP edits land AND the browser
+ * Load ordering: the stream opens BEFORE the map is fetched (`ready`), and ops
+ * that arrive before the map has loaded are buffered and replayed after. An
+ * AI that creates a map and immediately decorates it would otherwise land its
+ * edits in the gap between GET and SSE-open — and the next autosave would
+ * overwrite them. Replaying an op the GET already included is harmless: ops
+ * with final ids fail as duplicates, idempotent edits produce no patches.
+ *
+ * Known limit: if the SSE stream drops while MCP edits land AND the browser
  * autosaves during the gap, those MCP edits are overwritten (single-user
  * local tool — accepted).
  */
-export function initLiveSync(mapId: string): () => void {
+export function initLiveSync(mapId: string): { ready: Promise<void>; close(): void } {
   const es = new EventSource('/api/events');
   let firstOpen = true;
+  let pending: MapOp[][] = [];
+  let markReady!: () => void;
+  const ready = new Promise<void>((resolve) => (markReady = resolve));
+  const readyFallback = setTimeout(() => markReady(), 2000); // never block loading on a dead stream
+
+  const applyBatch = (ops: MapOp[]) => {
+    const s = useStore.getState();
+    // One runCommand for the whole batch = one undo entry. Best-effort per op:
+    // a stale op fails inside applyDocOp → zero patches for it → clean no-op.
+    const label = ops.length === 1 ? `mcp.${ops[0].type}` : 'mcp.batch';
+    s.runCommand(label, (draft) => {
+      for (const op of ops) applyDocOp(draft, op);
+      return {}; // keep the user's selection; clampSelection covers a deleted one
+    });
+    const now = useStore.getState();
+    if (now.editing && now.doc && !now.doc.nodes[now.editing.nodeId]) now.abortEdit();
+    now.markDirty(); // ALWAYS — re-assert the union to disk (see doc comment)
+  };
 
   es.addEventListener('map-ops', (ev) => {
     let e: { mapId: string; ops: MapOp[] };
@@ -29,23 +54,27 @@ export function initLiveSync(mapId: string): () => void {
     } catch {
       return;
     }
+    if (e.mapId !== mapId || e.ops.length === 0) return;
     const s = useStore.getState();
-    if (e.mapId !== mapId || s.mapId !== mapId || !s.doc || e.ops.length === 0) return;
-    // One runCommand for the whole batch = one undo entry. Best-effort per op:
-    // a stale op fails inside applyDocOp → zero patches for it → clean no-op.
-    const label = e.ops.length === 1 ? `mcp.${e.ops[0].type}` : 'mcp.batch';
-    s.runCommand(label, (draft) => {
-      for (const op of e.ops) applyDocOp(draft, op);
-      return {}; // keep the user's selection; clampSelection covers a deleted one
-    });
-    const now = useStore.getState();
-    if (now.editing && now.doc && !now.doc.nodes[now.editing.nodeId]) now.abortEdit();
-    now.markDirty(); // ALWAYS — re-assert the union to disk (see doc comment)
+    if (s.mapId !== mapId || !s.doc) {
+      pending.push(e.ops); // map still loading — replay once it is
+      return;
+    }
+    applyBatch(e.ops);
+  });
+
+  const unsubLoad = useStore.subscribe((s) => {
+    if (pending.length === 0 || s.mapId !== mapId || !s.doc) return;
+    const batches = pending;
+    pending = [];
+    for (const ops of batches) applyBatch(ops);
   });
 
   es.addEventListener('open', () => {
     if (firstOpen) {
       firstOpen = false;
+      clearTimeout(readyFallback);
+      markReady();
       return;
     }
     // Reconnected after a gap: ops may have been missed. If nothing is unsaved
@@ -64,7 +93,8 @@ export function initLiveSync(mapId: string): () => void {
           JSON.stringify(map.root) === JSON.stringify(denormalize(cur.doc)) &&
           JSON.stringify(map.relationships ?? []) === JSON.stringify(cur.doc.relationships) &&
           JSON.stringify(map.groups ?? []) === JSON.stringify(cur.doc.groups) &&
-          JSON.stringify(map.floating ?? []) === JSON.stringify(serializeFloating(cur.doc) ?? []);
+          JSON.stringify(map.floating ?? []) === JSON.stringify(serializeFloating(cur.doc) ?? []) &&
+          JSON.stringify(map.elements ?? []) === JSON.stringify(serializeElements(cur.doc) ?? []);
         if (unchanged) return;
         cur.loadMap(map);
         cur.addToast('info', 'Map changed outside the browser — reloaded');
@@ -72,5 +102,12 @@ export function initLiveSync(mapId: string): () => void {
       .catch(() => {});
   });
 
-  return () => es.close();
+  return {
+    ready,
+    close: () => {
+      clearTimeout(readyFallback);
+      unsubLoad();
+      es.close();
+    },
+  };
 }

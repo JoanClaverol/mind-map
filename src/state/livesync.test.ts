@@ -50,13 +50,26 @@ describe('livesync', () => {
     vi.stubGlobal('EventSource', FakeEventSource);
     FakeEventSource.instances = [];
     useStore.getState().loadMap(structuredClone(mapFile));
-    cleanup = initLiveSync('map000000001');
+    cleanup = initLiveSync('map000000001').close;
   });
 
   afterEach(() => {
     cleanup();
     useStore.getState().closeMap();
     vi.unstubAllGlobals();
+  });
+
+  it('buffers ops that arrive before the map has loaded and replays them after', () => {
+    cleanup();
+    useStore.getState().closeMap();
+    FakeEventSource.instances = [];
+    cleanup = initLiveSync('map000000001').close;
+    emitOp({ type: 'add_nodes', parentId: 'root00000001', branches: [{ id: 'bbbbbbbbbbbb', text: 'B', children: [] }] });
+    expect(useStore.getState().doc).toBeNull();
+    useStore.getState().loadMap(structuredClone(mapFile)); // the GET (without the op) lands
+    const s = useStore.getState();
+    expect(s.doc!.nodes.bbbbbbbbbbbb?.text).toBe('B');
+    expect(s.saveState).toBe('dirty'); // re-asserted to disk
   });
 
   it('applies an op through runCommand: undoable, marks dirty, keeps selection', () => {
