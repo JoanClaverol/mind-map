@@ -6,6 +6,7 @@ import {
   LAYOUT_STYLES,
   MAX_ELEMENT_SIZE,
   MAX_ELEMENT_TEXT_LEN,
+  MIN_DRAW_SIZE,
   MIN_ELEMENT_SIZE,
   MAX_ICON_LEN,
   MAX_NOTE_LEN,
@@ -25,6 +26,8 @@ import {
   type MapFile,
   type NodeColor,
 } from './types';
+
+import { isValidStroke } from './strokes';
 
 export class MigrationError extends Error {}
 
@@ -189,7 +192,9 @@ export function migrateMapFile(raw: unknown): MapFile {
       seen.add(e.id);
       const kind = e.kind as ElementKind;
       const size = (v: unknown, fallback: number) =>
-        Number.isFinite(v) ? Math.min(MAX_ELEMENT_SIZE, Math.max(MIN_ELEMENT_SIZE, v as number)) : fallback;
+        Number.isFinite(v)
+          ? Math.min(MAX_ELEMENT_SIZE, Math.max(kind === 'draw' ? MIN_DRAW_SIZE : MIN_ELEMENT_SIZE, v as number))
+          : fallback;
       const out: CanvasElement = {
         id: e.id,
         kind,
@@ -205,6 +210,10 @@ export function migrateMapFile(raw: unknown): MapFile {
         out.anchor = { nodeId: a.nodeId, side: a.side };
       }
       if (typeof e.color === 'string' && NODE_COLORS.includes(e.color as NodeColor)) out.color = e.color;
+      if (kind === 'draw') {
+        if (!isValidStroke(e.points)) return []; // a drawing without a stroke is nothing
+        out.points = [...e.points];
+      }
       return [out];
     });
     if (map.elements.length === 0) delete map.elements;

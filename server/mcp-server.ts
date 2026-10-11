@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { denormalize, docFromMap, serializeElements, serializeFloating, subtreeIds } from '../src/model/doc';
 import { branchToMarkdown, markdownToBranches } from '../src/model/markdown';
 import { applyDocOp, assignIds, type MapOp } from '../src/model/ops';
+import { normalizeStroke } from '../src/model/strokes';
 import {
   BRANCH_STYLES,
   ELEMENT_DEFAULT_SIZE,
@@ -213,7 +214,7 @@ interface MapFile {
   root: FileNode;
   floating?: Array<{ pos: { x: number; y: number }; root: FileNode }>;
   // Freeform sticky notes / text / shapes; anchored ones sit beside a node and follow it
-  elements?: Array<{ id: string; kind: 'sticky' | 'text' | 'rect' | 'ellipse'; text: string; w: number; h: number; x: number; y: number; anchor?: { nodeId: string; side: 'right' | 'left' | 'above' | 'below' }; color?: string }>;
+  elements?: Array<{ id: string; kind: 'sticky' | 'text' | 'rect' | 'ellipse' | 'draw'; points?: number[] /* draw: normalized 0…1 */; text: string; w: number; h: number; x: number; y: number; anchor?: { nodeId: string; side: 'right' | 'left' | 'above' | 'below' }; color?: string }>;
 }
 
 interface FileNode {
@@ -256,10 +257,19 @@ const elementFields = {
   w: z.number().optional().describe('Width in px (text-bearing kinds grow taller to fit their text)'),
   h: z.number().optional().describe('Minimum height in px'),
   color: z.enum([...NODE_COLORS, 'none']).optional().describe('Palette color; stickies default to yellow'),
+  points: z
+    .array(z.tuple([z.number(), z.number()]))
+    .min(2)
+    .max(2000)
+    .optional()
+    .describe(
+      'draw only: one freehand stroke as [x, y] pixel points relative to the element (0,0 = its top-left) — an underline, a circle around something, an arrow sketch, a checkmark',
+    ),
 };
 
 type ElementArgs = {
   kind: ElementKind;
+  points?: Array<[number, number]>;
   text?: string;
   anchor_node_id?: string;
   side?: string;
@@ -290,6 +300,19 @@ function buildElement(args: ElementArgs, map: MapFile, index: number): CanvasEle
     el.y = args.y ?? spot.y;
   }
   if (args.color && args.color !== 'none') el.color = args.color;
+  if (args.kind === 'draw' && args.points) {
+    // Pixel points → a box + normalized stroke; ops reject a draw without points.
+    const stroke = normalizeStroke(args.points.map(([x, y]) => ({ x, y })));
+    if (stroke) {
+      el.points = stroke.points;
+      el.w = args.w ?? stroke.w;
+      el.h = args.h ?? stroke.h;
+      if (!el.anchor) {
+        el.x += stroke.x;
+        el.y += stroke.y;
+      }
+    }
+  }
   return el;
 }
 
@@ -1050,7 +1073,7 @@ export function createMcpServer(): McpServer {
     'add_element',
     {
       description:
-        'Adds a freeform canvas element (Excalidraw-style, outside the trees): sticky (a note — callouts, caveats, open questions, summaries), text (a free heading/caption), rect or ellipse (a shape, e.g. a zone or a highlighted concept). Anchor it to a node with anchor_node_id + side to place it beside that node without knowing pixel coordinates — it follows the node through layout changes. Arrows (add_relationship) can connect elements and nodes. Returns the element id. Live and undoable in the browser.',
+        'Adds a freeform canvas element (Excalidraw-style, outside the trees): sticky (a note — callouts, caveats, open questions, summaries), text (a free heading/caption), rect or ellipse (a shape, e.g. a zone or a highlighted concept), draw (a freehand stroke from `points` — underline, circle, checkmark, squiggle). Anchor it to a node with anchor_node_id + side to place it beside that node without knowing pixel coordinates — it follows the node through layout changes. Arrows (add_relationship) can connect elements and nodes. Returns the element id. Live and undoable in the browser.',
       inputSchema: z.object({
         map_id: z.string().describe('The map id'),
         kind: z.enum(KIND_CHOICES),

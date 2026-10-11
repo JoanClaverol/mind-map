@@ -362,7 +362,20 @@ export const registry: Record<string, AppCommand> = {
   'element.addEllipse': { description: 'Add an ellipse at the view center', run: () => addElement('ellipse') },
   'element.edit': {
     description: 'Edit the selected element\'s text',
-    run: () => withElement((el) => state().startEditElement(el.id)),
+    run: () => withElement((el) => el.kind !== 'draw' && state().startEditElement(el.id)),
+  },
+  'element.pen': {
+    description: 'Freehand pen — drag to draw (toggle)',
+    run: () => {
+      const s = state();
+      if (!s.doc) return;
+      if (!s.penMode && s.hoistId) {
+        s.addToast('info', 'Drawings are hidden while hoisted — Esc to exit first');
+        return;
+      }
+      s.selectElement(null);
+      s.setPenMode(!s.penMode);
+    },
   },
   'element.cycleColor': {
     description: 'Cycle the selected element\'s color',

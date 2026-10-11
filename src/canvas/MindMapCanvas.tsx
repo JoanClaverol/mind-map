@@ -6,7 +6,9 @@ import { measureText } from '../layout/measure';
 import { floatingEntry, subtreeIds, visibleIds } from '../model/doc';
 import { searchMatches, viewScope } from '../model/search';
 import { MIN_ELEMENT_SIZE, type CanvasElement, type Position } from '../model/types';
-import { addFloatingTree, detachNode, editElement, moveNode, moveTree } from '../state/commands';
+import { addElement, addFloatingTree, detachNode, editElement, moveNode, moveTree } from '../state/commands';
+import { newId } from '../model/doc';
+import { normalizeStroke, simplify } from '../model/strokes';
 import { runCommandById } from '../state/registry';
 import { canvasMode, useStore } from '../state/store';
 import { distanceToNearestRect, dropTargetsEqual, resolveDropTarget, type DropTarget } from './dnd';
@@ -59,6 +61,9 @@ export function MindMapCanvas() {
   const editingGroup = useStore((s) => s.editingGroup);
   const selectedElementId = useStore((s) => s.selectedElementId);
   const editingElement = useStore((s) => s.editingElement);
+  const penMode = useStore((s) => s.penMode);
+  /** The stroke being drawn (world coords), previewed until mouseup commits it. */
+  const [penStroke, setPenStroke] = useState<Position[] | null>(null);
   const viewport = useStore((s) => s.viewport);
   const hoistId = useStore((s) => s.hoistId);
   const measureEpoch = useStore((s) => s.measureEpoch);
@@ -374,6 +379,34 @@ export function MindMapCanvas() {
     }
   };
 
+  // Pen mode: a drag anywhere — even over nodes — draws one stroke (one undo step).
+  const onPenMouseDown = (e: React.MouseEvent) => {
+    const host = hostRef.current;
+    if (!useStore.getState().penMode || e.button !== 0 || !host) return;
+    e.preventDefault();
+    e.stopPropagation(); // capture phase: nodes/elements never see the press
+    host.focus();
+    const toWorld = (ev: { clientX: number; clientY: number }) =>
+      screenToWorld(useStore.getState().viewport, host.getBoundingClientRect(), ev.clientX, ev.clientY);
+    const pts: Position[] = [toWorld(e)];
+    setPenStroke([...pts]);
+    const onMove = (ev: MouseEvent) => {
+      pts.push(toWorld(ev));
+      setPenStroke([...pts]);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setPenStroke(null);
+      const stroke = normalizeStroke(pts);
+      if (!stroke) return; // a click, not a stroke
+      const s = useStore.getState();
+      s.runCommand('drawStroke', (d) => addElement(d, { id: newId(), kind: 'draw', text: '', ...stroke }));
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   const panState = useRef<{ startX: number; startY: number; vpX: number; vpY: number } | null>(null);
   const onMouseDown = (e: React.MouseEvent) => {
     // Only drag-pan when the press starts on empty canvas (nodes/arrows/groups stopPropagation).
@@ -404,7 +437,7 @@ export function MindMapCanvas() {
     const host = hostRef.current;
     if (!host) return;
     const s = useStore.getState();
-    if (!s.doc || s.editing) return;
+    if (!s.doc || s.editing || s.penMode) return;
     if (s.hoistId) {
       s.addToast('info', 'Floating trees are hidden while hoisted — Esc to exit first');
       return;
@@ -476,7 +509,8 @@ export function MindMapCanvas() {
 
   return (
     <div
-      className={`canvas-host${drag ? ' dragging' : ''}`}
+      className={`canvas-host${drag ? ' dragging' : ''}${penMode ? ' pen' : ''}`}
+      onMouseDownCapture={onPenMouseDown}
       ref={hostRef}
       tabIndex={0}
       onKeyDown={onKeyDown}
@@ -546,6 +580,7 @@ export function MindMapCanvas() {
           {/* Elements above arrow lines (a line never strikes through sticky text), below nodes. */}
           <g className="elements">
             {doc.elements.map((el) => {
+              if (el.kind === 'draw') return null; // freehand ink renders above the nodes (layer below)
               const rect = shownElementRect(el.id);
               if (!rect) return null;
               return (
@@ -583,6 +618,34 @@ export function MindMapCanvas() {
               />
             ))}
           </g>
+          {/* Freehand ink sits ON TOP of nodes — a circle around an idea must stay visible. */}
+          <g className="elements drawings">
+            {doc.elements.map((el) => {
+              if (el.kind !== 'draw') return null;
+              const rect = shownElementRect(el.id);
+              if (!rect) return null;
+              return (
+                <ElementView
+                  key={el.id}
+                  el={el}
+                  rect={rect}
+                  selected={el.id === selectedElementId}
+                  editing={editingElement?.elementId === el.id}
+                  onPress={(e) => handleElementPress(el, 'move', e)}
+                  onResizePress={(e) => handleElementPress(el, 'resize', e)}
+                  onEdit={() => useStore.getState().startEditElement(el.id)}
+                />
+              );
+            })}
+          </g>
+          {penStroke && penStroke.length > 1 && (
+            <polyline
+              className="draw-stroke draw-preview"
+              points={simplify(penStroke, 1)
+                .map((p) => `${p.x},${p.y}`)
+                .join(' ')}
+            />
+          )}
           <g className="relationships rel-labels">
             {renderRelationships('label')}
             {pendingArrow && (

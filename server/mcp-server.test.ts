@@ -57,6 +57,23 @@ describe('mcp-server tools', () => {
     expect(map.root.children.map((c) => c.text)).toEqual(['Friday', 'Saturday']);
   });
 
+  it('add_element draws a freehand stroke from pixel points', async () => {
+    const client = await createClient();
+    const text = textContent(
+      await client.callTool({ name: 'create_map_from_outline', arguments: { title: 'Doodle', markdown: '- A\n- B', open: false } }),
+    );
+    const mapId = text.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+    const r = await client.callTool({
+      name: 'add_element',
+      arguments: { map_id: mapId, kind: 'draw', x: 10, y: 20, points: [[0, 0], [40, 30], [80, 0]], color: 'rose' },
+    });
+    expect(r.isError).toBeFalsy();
+    const map = JSON.parse(readFileSync(path.join(mapsDir, `${mapId}.json`), 'utf8')) as MapFile;
+    expect(map.elements?.[0]).toMatchObject({ kind: 'draw', x: 10, y: 20, w: 80, h: 30, points: [0, 0, 0.5, 1, 1, 0], color: 'rose' });
+    const noPoints = await client.callTool({ name: 'add_element', arguments: { map_id: mapId, kind: 'draw' } });
+    expect(noPoints.isError).toBe(true);
+  });
+
   it('exposes the routines as prompts, with their text pulled from MCP.md', async () => {
     const client = await createClient();
     const { prompts } = await client.listPrompts();

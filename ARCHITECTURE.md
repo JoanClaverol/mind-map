@@ -146,12 +146,13 @@ interface Group {
 
 interface CanvasElement {
   id: string;
-  kind: 'sticky' | 'text' | 'rect' | 'ellipse';
+  kind: 'sticky' | 'text' | 'rect' | 'ellipse' | 'draw';
   text: string;          // inline markdown; may be empty for shapes
   w: number; h: number;  // h is a minimum — text-bearing kinds grow to fit
   x: number; y: number;  // free: world top-left; anchored: nudge from the anchored spot
   anchor?: { nodeId: string; side: 'right' | 'left' | 'above' | 'below' }; // follows + deleted with the node
   color?: string;        // palette name
+  points?: number[];     // draw only: [x0,y0,x1,y1,…] normalized 0…1 within w×h
 }
 ```
 

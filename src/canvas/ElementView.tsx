@@ -5,6 +5,7 @@ import { NODE_COLORS, type CanvasElement, type NodeColor } from '../model/types'
 import { useStore } from '../state/store';
 import { elementTextBox } from './elements';
 import { sameDataProps } from './memo';
+import { strokePath } from '../model/strokes';
 import { roughBox, roughEllipse } from './sketch';
 
 interface ElementViewProps {
@@ -31,7 +32,16 @@ function ElementViewImpl({ el, rect, selected, editing, onPress, onResizePress, 
   const text = elementTextBox(el, w, h);
 
   let shape: React.ReactNode;
-  if (sketch && el.kind !== 'text') {
+  if (el.kind === 'draw') {
+    const d = strokePath(el.points ?? [], w, h);
+    shape = (
+      <>
+        {/* Fat invisible stroke: a thin line is still easy to grab. */}
+        <path className="draw-hit" d={d} />
+        <path className="draw-stroke" d={d} />
+      </>
+    );
+  } else if (sketch && el.kind !== 'text') {
     const rough = el.kind === 'ellipse' ? roughEllipse(el.id, w, h) : roughBox(el.id, w, h);
     shape = (
       <>

@@ -1,4 +1,4 @@
-export type Context = 'nav' | 'edit' | 'gallery' | 'link' | 'relsel' | 'group' | 'groupsel' | 'elemsel';
+export type Context = 'nav' | 'edit' | 'gallery' | 'link' | 'relsel' | 'group' | 'groupsel' | 'elemsel' | 'pen';
 
 export interface Binding {
   /** Normalized combo: "[mod+][shift+][alt+]key", e.g. "tab", "mod+shift+z", "h". */
@@ -78,6 +78,14 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'shift+t', context: 'nav', command: 'element.addText' },
   { combo: 'shift+r', context: 'nav', command: 'element.addRect' },
   { combo: 'shift+o', context: 'nav', command: 'element.addEllipse' },
+  // freehand pen (⇧F): drag to draw strokes; ⇧F or Esc leaves it
+  { combo: 'shift+f', context: 'nav', command: 'element.pen' },
+  { combo: 'shift+f', context: 'elemsel', command: 'element.pen' },
+  { combo: 'shift+f', context: 'pen', command: 'element.pen' },
+  { combo: 'escape', context: 'pen', command: 'element.pen' },
+  { combo: 'mod+z', context: 'pen', command: 'history.undo' },
+  { combo: 'mod+shift+z', context: 'pen', command: 'history.redo' },
+  { combo: 'mod+0', context: 'pen', command: 'view.fit' },
   // when an element is selected: enter edits, c recolors, hjkl nudges (⇧ = 5×), delete removes
   { combo: 'enter', context: 'elemsel', command: 'element.edit' },
   { combo: 'c', context: 'elemsel', command: 'element.cycleColor' },

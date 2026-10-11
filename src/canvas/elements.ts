@@ -27,18 +27,21 @@ const OUTWARD: Record<ElementSide, { dx: number; dy: number }> = {
 const ELLIPSE_TEXT_RATIO = 0.72;
 
 /** Where the element's top-left sits beside its anchor node, before the x/y nudge. */
-function besideNode(node: Rect, side: ElementSide, w: number, h: number): { x: number; y: number } {
+function besideNode(node: Rect, side: ElementSide, w: number, h: number, gap: number): { x: number; y: number } {
   switch (side) {
     case 'right':
-      return { x: node.x + node.w + ELEMENT_GAP, y: node.y + node.h / 2 - h / 2 };
+      return { x: node.x + node.w + gap, y: node.y + node.h / 2 - h / 2 };
     case 'left':
-      return { x: node.x - ELEMENT_GAP - w, y: node.y + node.h / 2 - h / 2 };
+      return { x: node.x - gap - w, y: node.y + node.h / 2 - h / 2 };
     case 'above':
-      return { x: node.x + node.w / 2 - w / 2, y: node.y - ELEMENT_GAP - h };
+      return { x: node.x + node.w / 2 - w / 2, y: node.y - gap - h };
     case 'below':
-      return { x: node.x + node.w / 2 - w / 2, y: node.y + node.h + ELEMENT_GAP };
+      return { x: node.x + node.w / 2 - w / 2, y: node.y + node.h + gap };
   }
 }
+
+/** Drawings annotate what they touch (an underline, a circle): hug the node. */
+const DRAW_GAP = 2;
 
 /** Rendered height: the stored minimum, grown so the text always fits. */
 export function elementHeight(el: CanvasElement): number {
@@ -75,10 +78,16 @@ export function layoutElements(doc: Doc, nodeRects: Map<string, Rect>, hoisted: 
     if (el.anchor) {
       const node = nodeRects.get(el.anchor.nodeId);
       if (!node) continue;
+      if (el.kind === 'draw') {
+        // Drawings neither stack nor get pushed away — touching the node is the point.
+        const at = besideNode(node, el.anchor.side, el.w, h, DRAW_GAP);
+        out.set(el.id, { x: at.x + el.x, y: at.y + el.y, w: el.w, h });
+        continue;
+      }
       const key = `${el.anchor.nodeId}|${el.anchor.side}`;
       const offset = stackOffset.get(key) ?? 0;
       stackOffset.set(key, offset + h + STACK_GAP);
-      const at = besideNode(node, el.anchor.side, el.w, h);
+      const at = besideNode(node, el.anchor.side, el.w, h, ELEMENT_GAP);
       const base: Rect = { x: at.x, y: at.y + (el.anchor.side === 'above' ? -offset : offset), w: el.w, h };
       // "Beside" must not mean "on top of": step outward until clear of every node
       // and earlier element (e.g. past the children of a node anchored on its right).

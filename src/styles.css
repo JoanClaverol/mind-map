@@ -1126,3 +1126,36 @@ body,
 :root[data-theme='sketch'] .element-shape {
   stroke-width: 1.3;
 }
+
+/* Freehand drawings (⇧F pen) — strokes take the palette's accent colors. */
+.canvas-host.pen,
+.canvas-host.pen * {
+  cursor: crosshair !important;
+}
+
+.draw-stroke {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.draw-preview {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.draw-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  stroke-linecap: round;
+  pointer-events: stroke;
+}
+
+.element.kind-draw.color-sage .draw-stroke { stroke: #5d9272; }
+.element.kind-draw.color-mist .draw-stroke { stroke: #5e81ac; }
+.element.kind-draw.color-clay .draw-stroke { stroke: #c08552; }
+.element.kind-draw.color-sand .draw-stroke { stroke: #c9a227; }
+.element.kind-draw.color-rose .draw-stroke { stroke: #d3705f; }

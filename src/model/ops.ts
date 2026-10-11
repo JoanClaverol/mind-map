@@ -1,10 +1,12 @@
 import { floatingEntry, newId, subtreeIds } from './doc';
+import { isValidStroke } from './strokes';
 import {
   BRANCH_STYLES,
   ELEMENT_KINDS,
   ELEMENT_SIDES,
   MAX_ELEMENT_SIZE,
   MAX_ELEMENT_TEXT_LEN,
+  MIN_DRAW_SIZE,
   MIN_ELEMENT_SIZE,
   MAX_ICON_LEN,
   MAX_NOTE_LEN,
@@ -512,14 +514,18 @@ function deleteGroup(doc: Doc, groupId: string): OpResult {
   return { ok: true };
 }
 
-function checkElementGeometry(e: { x?: number; y?: number; w?: number; h?: number }): string | null {
+function checkElementGeometry(
+  e: { x?: number; y?: number; w?: number; h?: number },
+  kind?: CanvasElement['kind'],
+): string | null {
   for (const k of ['x', 'y'] as const) {
     if (e[k] !== undefined && !Number.isFinite(e[k])) return `${k} must be a finite number`;
   }
+  const min = kind === 'draw' ? MIN_DRAW_SIZE : MIN_ELEMENT_SIZE;
   for (const k of ['w', 'h'] as const) {
     const v = e[k];
-    if (v !== undefined && (!Number.isFinite(v) || v < MIN_ELEMENT_SIZE || v > MAX_ELEMENT_SIZE)) {
-      return `${k} must be between ${MIN_ELEMENT_SIZE} and ${MAX_ELEMENT_SIZE}`;
+    if (v !== undefined && (!Number.isFinite(v) || v < min || v > MAX_ELEMENT_SIZE)) {
+      return `${k} must be between ${min} and ${MAX_ELEMENT_SIZE}`;
     }
   }
   return null;
@@ -545,12 +551,19 @@ function addElement(doc: Doc, element: CanvasElement): OpResult {
     return { ok: false, reason: `unknown element kind "${element.kind}" — valid: ${ELEMENT_KINDS.join(', ')}` };
   }
   if (element.text.length > MAX_ELEMENT_TEXT_LEN) return { ok: false, reason: `text exceeds ${MAX_ELEMENT_TEXT_LEN} chars` };
-  const err = checkElementGeometry(element) ?? checkAnchor(doc, element.anchor) ?? checkColor(element.color);
+  if (element.kind === 'draw' && !isValidStroke(element.points)) {
+    return { ok: false, reason: 'a draw element needs points: ≥ 2 normalized [x, y] pairs in 0…1' };
+  }
+  if (element.kind !== 'draw' && element.points !== undefined) {
+    return { ok: false, reason: 'only draw elements carry points' };
+  }
+  const err = checkElementGeometry(element, element.kind) ?? checkAnchor(doc, element.anchor) ?? checkColor(element.color);
   if (err) return { ok: false, reason: err };
   const out: CanvasElement = { ...element };
   if (out.anchor) out.anchor = { nodeId: out.anchor.nodeId, side: out.anchor.side };
   else delete out.anchor;
   if (!out.color) delete out.color;
+  if (out.points) out.points = [...out.points];
   doc.elements.push(out);
   return { ok: true };
 }
@@ -561,7 +574,7 @@ function editElement(doc: Doc, op: Extract<MapOp, { type: 'edit_element' }>): Op
   if (op.text !== undefined && op.text.length > MAX_ELEMENT_TEXT_LEN) {
     return { ok: false, reason: `text exceeds ${MAX_ELEMENT_TEXT_LEN} chars` };
   }
-  const err = checkElementGeometry(op) ?? (op.anchor ? checkAnchor(doc, op.anchor) : null) ?? checkColor(op.color);
+  const err = checkElementGeometry(op, el.kind) ?? (op.anchor ? checkAnchor(doc, op.anchor) : null) ?? checkColor(op.color);
   if (err) return { ok: false, reason: err };
   // Only assign what changes: a no-op edit must produce zero patches (clean history).
   if (op.text !== undefined && op.text !== el.text) el.text = op.text;

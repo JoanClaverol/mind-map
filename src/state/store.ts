@@ -61,6 +61,8 @@ interface StoreState {
   selectedElementId: string | null;
   /** Inline text editor open on an element. */
   editingElement: { elementId: string } | null;
+  /** Freehand pen (⇧F): drags on the canvas draw strokes instead of panning. */
+  penMode: boolean;
   /** The group whose label is being edited. */
   editingGroup: { groupId: string } | null;
   viewport: Viewport;
@@ -131,6 +133,7 @@ interface StoreState {
   selectElement(id: string | null): void;
   startEditElement(elementId: string): void;
   setEditingElement(v: { elementId: string } | null): void;
+  setPenMode(on: boolean): void;
   startEditGroup(groupId: string): void;
   setEditingGroup(v: { groupId: string } | null): void;
   setViewport(viewport: Viewport): void;
@@ -183,8 +186,9 @@ function clampSelection(doc: Doc, id: string | null): string {
  * keymap context (MindMapCanvas) and the status-bar hints, so they never drift.
  */
 export function canvasMode(
-  s: Pick<StoreState, 'linking' | 'grouping' | 'selectedRelId' | 'selectedGroupId' | 'selectedElementId'>,
-): 'link' | 'group' | 'relsel' | 'groupsel' | 'elemsel' | null {
+  s: Pick<StoreState, 'linking' | 'grouping' | 'selectedRelId' | 'selectedGroupId' | 'selectedElementId' | 'penMode'>,
+): 'pen' | 'link' | 'group' | 'relsel' | 'groupsel' | 'elemsel' | null {
+  if (s.penMode) return 'pen';
   if (s.linking) return 'link';
   if (s.grouping) return 'group';
   if (s.selectedRelId) return 'relsel';
@@ -209,6 +213,7 @@ export const useStore = create<StoreState>((set, get) => ({
   editingGroup: null,
   selectedElementId: null,
   editingElement: null,
+  penMode: false,
   viewport: { x: 60, y: 60, zoom: 1 },
   rev: 0,
   savedRev: 0,
@@ -252,6 +257,7 @@ export const useStore = create<StoreState>((set, get) => ({
       editingGroup: null,
       selectedElementId: null,
       editingElement: null,
+      penMode: false,
       needsFit: !remembered,
       viewport: remembered ?? { x: 60, y: 60, zoom: 1 },
       rev: 0,
@@ -284,6 +290,7 @@ export const useStore = create<StoreState>((set, get) => ({
       editingGroup: null,
       selectedElementId: null,
       editingElement: null,
+      penMode: false,
       rev: 0,
       savedRev: 0,
       saveState: 'idle',
@@ -435,12 +442,16 @@ export const useStore = create<StoreState>((set, get) => ({
 
   startEditElement(elementId) {
     const { doc } = get();
-    if (!doc || !doc.elements.some((e) => e.id === elementId)) return;
+    if (!doc || !doc.elements.some((e) => e.id === elementId && e.kind !== 'draw')) return; // drawings have no text
     set({ editingElement: { elementId }, selectedElementId: elementId, selectedRelId: null, selectedGroupId: null });
   },
 
   setEditingElement(v) {
     set({ editingElement: v });
+  },
+
+  setPenMode(on) {
+    set(on ? { penMode: true, linking: null, grouping: null, selectedRelId: null, selectedGroupId: null } : { penMode: false });
   },
 
   startEditGroup(groupId) {

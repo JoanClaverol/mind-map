@@ -53,9 +53,10 @@ export function normalize(
   // Elements anchored to a missing node are dropped (they'd have nowhere to sit).
   const docElements = elements
     .filter((e) => !e.anchor || nodes[e.anchor.nodeId])
-    .map((e) => ({ ...e, anchor: e.anchor ? { ...e.anchor } : undefined }))
+    .map((e) => ({ ...e, anchor: e.anchor ? { ...e.anchor } : undefined, points: e.points && [...e.points] }))
     .map((e) => {
       if (!e.anchor) delete e.anchor;
+      if (!e.points) delete e.points;
       return e;
     });
   const elementIds = new Set(docElements.map((e) => e.id));
@@ -97,7 +98,9 @@ export function docFromMap(map: MapFile): Doc {
 
 /** MapFile.elements from a doc, or undefined when there are none. */
 export function serializeElements(doc: Doc): CanvasElement[] | undefined {
-  return doc.elements.length ? doc.elements.map((e) => ({ ...e, anchor: e.anchor && { ...e.anchor } })) : undefined;
+  return doc.elements.length
+    ? doc.elements.map((e) => ({ ...e, anchor: e.anchor && { ...e.anchor }, points: e.points && [...e.points] }))
+    : undefined;
 }
 
 /** Flat normalized doc → nested file tree. */

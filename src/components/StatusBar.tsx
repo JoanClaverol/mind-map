@@ -17,6 +17,7 @@ const MODE_HINTS = {
   group: 'Grouping — hjkl to a node · Space add/remove · Enter create · Esc cancel',
   relsel: 'Arrow selected — Enter label · Delete remove · Esc deselect',
   groupsel: 'Group selected — Enter label · C color · ⇧G members · Delete remove · Esc deselect',
+  pen: 'Pen — drag to draw · ⌘Z undo a stroke · ⇧F or Esc done',
   elemsel: 'Element selected — Enter text · C color · hjkl nudge (⇧ far) · drag corner to resize · Delete remove · Esc deselect',
 } as const;
 

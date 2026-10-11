@@ -47,7 +47,8 @@ When the user says "this map", "this node", "here", or "the selected branch", ca
 
 ### `add_element`
 
-- Arguments: `{ map_id, kind: "sticky" | "text" | "rect" | "ellipse", text?, anchor_node_id?, side?: "right" | "left" | "above" | "below", x?, y?, w?, h?, color? }`
+- Arguments: `{ map_id, kind: "sticky" | "text" | "rect" | "ellipse" | "draw", text?, anchor_node_id?, side?: "right" | "left" | "above" | "below", x?, y?, w?, h?, color?, points? }`
+- `draw` is one freehand stroke: `points` is a list of `[x, y]` pixels relative to the element's top-left (e.g. an underline `[[0,4],[40,1],[80,5],[120,2]]`, or ~20 points around an ellipse to circle something). Anchored drawings hug their node (no gap, no push-away) and render **on top of** nodes, so `side: "below"` + a wavy line underlines it.
 - A freeform canvas element outside the trees. **Prefer anchoring** (`anchor_node_id` + `side`, default right): it sits beside that node, follows it through layout changes, hides when it's collapsed, and is deleted with it. When anchored, `x`/`y` are a nudge from that spot. Free elements use `x`/`y` as world coordinates (advisory — the user drags things).
 - Text-bearing elements grow taller to fit their text; `h` is a minimum. Stickies are yellow unless `color` says otherwise.
 - Returns the element id. Also available in `apply_ops` (`add_element`, `edit_element`, `delete_element`).
@@ -274,12 +275,13 @@ interface Group {
 
 interface CanvasElement {
   id: string;
-  kind: 'sticky' | 'text' | 'rect' | 'ellipse';
+  kind: 'sticky' | 'text' | 'rect' | 'ellipse' | 'draw';
   text: string;          // inline markdown; may be empty for shapes
   w: number; h: number;  // h is a minimum — text-bearing kinds grow to fit
   x: number; y: number;  // free: world top-left; anchored: nudge from the anchored spot
   anchor?: { nodeId: string; side: 'right' | 'left' | 'above' | 'below' }; // follows + deleted with the node
   color?: string;        // palette name
+  points?: number[];     // draw only: [x0,y0,x1,y1,…] normalized 0…1 within w×h
 }
 ```
 
@@ -362,10 +364,11 @@ The trees hold the *structure*; canvas elements hold everything around it — th
 
 1. **Sticky** (`add_element kind: "sticky"`) for commentary that isn't an idea in the hierarchy: open questions, caveats, decisions-pending, a summary of a branch. Anchor it to the node it talks about (`anchor_node_id`, `side`) — you don't know pixel coordinates, the anchor does the placing and keeps it attached when the layout changes.
 2. **Text** for a free heading or caption (e.g. `side: "above"` the root as a map subtitle).
-3. **Rect / ellipse** to mark a zone or a highlighted concept ("Risk zone" below the budget branch). Shapes don't enclose nodes — use `add_group` to enclose.
-4. Arrows can start or end on an element: `add_relationship` from a sticky to the node it questions.
-5. Several elements on the same side of one node stack automatically (in creation order) — no manual offsets needed.
-6. After placing several, `export_map` and look: fix overlaps with `edit_element` (`x`/`y` nudges, `side`, `w`).
+3. **Draw** (`kind: "draw"`, `points`) to underline, circle, or tick a node — the lightest emphasis there is, and it reads as a human mark.
+4. **Rect / ellipse** to mark a zone or a highlighted concept ("Risk zone" below the budget branch). Shapes don't enclose nodes — use `add_group` to enclose.
+5. Arrows can start or end on an element: `add_relationship` from a sticky to the node it questions.
+6. Several elements on the same side of one node stack automatically (in creation order) — no manual offsets needed.
+7. After placing several, `export_map` and look: fix overlaps with `edit_element` (`x`/`y` nudges, `side`, `w`).
 
 ### Brainstorm with floating trees
 

@@ -100,7 +100,7 @@ export interface Group {
  * sticky notes, free text, rectangles, ellipses. Not part of any tree — layout
  * never moves them — but arrows can link to them like nodes.
  */
-export const ELEMENT_KINDS = ['sticky', 'text', 'rect', 'ellipse'] as const;
+export const ELEMENT_KINDS = ['sticky', 'text', 'rect', 'ellipse', 'draw'] as const;
 export type ElementKind = (typeof ELEMENT_KINDS)[number];
 export const ELEMENT_SIDES = ['right', 'left', 'above', 'below'] as const;
 export type ElementSide = (typeof ELEMENT_SIDES)[number];
@@ -113,7 +113,12 @@ export const ELEMENT_DEFAULT_SIZE: Record<ElementKind, { w: number; h: number }>
   text: { w: 220, h: 32 },
   rect: { w: 200, h: 120 },
   ellipse: { w: 180, h: 120 },
+  draw: { w: 120, h: 80 },
 };
+/** Drawings may be much thinner than boxes: a flat underline is a few px tall. */
+export const MIN_DRAW_SIZE = 4;
+/** Freehand strokes: max points per stroke (after simplification). */
+export const MAX_DRAW_POINTS = 2000;
 
 export interface CanvasElement {
   id: string;
@@ -136,6 +141,11 @@ export interface CanvasElement {
    */
   anchor?: { nodeId: string; side: ElementSide };
   color?: string;
+  /**
+   * `draw` only: one freehand stroke as flat [x0, y0, x1, y1, …] pairs,
+   * normalized to 0…1 within the w×h box — so resizing scales the drawing.
+   */
+  points?: number[];
 }
 
 /** One map = one JSON file in maps/. */

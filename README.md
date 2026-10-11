@@ -203,7 +203,7 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
 | Annotate | `set_node_meta` — color, icon, hidden note, tags; renders quietly on the canvas |
 | Floating trees | `create_tree`, `detach_node` — detached trees on the canvas; `move_node` on a tree root attaches it |
 | Connect ideas | `add_relationship`, `edit_relationship`, `delete_relationship` — labeled arrows between any two nodes, across trees |
-| Canvas elements | `add_element`, `edit_element`, `delete_element` — sticky notes, text, shapes; anchored beside a node so the AI never needs pixel coordinates |
+| Canvas elements | `add_element`, `edit_element`, `delete_element` — sticky notes, text, shapes, freehand strokes; anchored beside a node so the AI never needs pixel coordinates |
 | Group ideas | `add_group`, `edit_group`, `delete_group` — dashed boundaries around sets of nodes, even from different parents |
 | Batch | `apply_ops` — up to 50 edits, atomic on disk, **one undo step** for you |
 | Export & look | `export_map` — renders through your open tab, saves `exports/*.png|svg` next to the maps, and hands the PNG back so the AI can *see* its layout |
@@ -225,8 +225,9 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
   branches), jump with Enter, or pin the query as a filter that dims everything else.
 - **Hoist** (`⌘.`) — any branch becomes the temporary root, Workflowy-style: navigate,
   edit, and fit within just that subtree; Esc brings the full map back.
-- **Freeform canvas** — sticky notes, free text, rectangles, and ellipses around the trees,
-  Excalidraw-style. Anchor one to a node and it follows that node through any layout change;
+- **Freeform canvas** — sticky notes, free text, rectangles, ellipses, and **freehand
+  drawing** (`⇧F`) around the trees, Excalidraw-style; ink sits on top, so circling or
+  underlining an idea just works. Anchor one to a node and it follows that node through any layout change;
   arrows connect elements and nodes alike.
 - **Sketch look** (`⇧D`) — Excalidraw-style hand-drawn boxes, edges, and arrows
   ([roughjs](https://roughjs.com)) with the handwritten Kalam font; stable wobble per shape.
@@ -270,6 +271,7 @@ New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
 | `⌘=` / `⌘-` / `⌘0` | Zoom in / out / fit |
 | `⇧P` | **Sticky note** beside the selected node (it follows the node) — type, `Enter` |
 | `⇧T` / `⇧R` / `⇧O` | Free **text** / **rectangle** / **ellipse** at the view center. Select an element (click) → `Enter` edit text, `C` color, `hjkl` nudge (`⇧` = far), drag to move, drag the corner to resize, `Delete` remove |
+| `⇧F` | **Freehand pen** — drag anywhere (even over nodes) to draw a stroke; each stroke is one undo step and becomes an element you can select, move, recolor (`C`), resize, delete. `⇧F` or `Esc` puts the pen down |
 | `⇧D` | Toggle the **sketch look** — hand-drawn strokes and a handwritten font, Excalidraw-style (remembered per browser; exports follow it) |
 | `⌘E` / `⌘⇧E` | **Export** the map as PNG / SVG (what you see — hoist and pinned filters apply) |
 | `Esc` | Back out one layer: clear the pinned filter → exit hoist → back to gallery |
@@ -289,8 +291,8 @@ label, `C` cycles its color, `⇧G` re-picks its members, `Delete` removes it (n
 
 > Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧G` groups, `⇧I` opens the inspector, `⇧N`
 > adds a floating tree, `⇧D` toggles the sketch look, `⇧P`/`⇧T`/`⇧R`/`⇧O` add canvas elements,
-> and `⇧S`/`⇧B` switch structure, typing a *capital* A/B/D/G/H/I/J/K/L/N/O/P/R/S/T won't trigger
-> type-to-edit — press `Space` to edit instead, or unbind them via
+> `⇧F` picks up the pen, and `⇧S`/`⇧B` switch structure, typing a *capital*
+> A/B/D/F/G/H/I/J/K/L/N/O/P/R/S/T won't trigger type-to-edit — press `Space` to edit instead, or unbind them via
 > `localStorage.keymap`.
 
 ## Gallery
