@@ -137,6 +137,10 @@ export const DEFAULT_KEYMAP: Binding[] = [
   { combo: 'mod+e', context: 'nav', command: 'export.png' },
   { combo: 'mod+shift+e', context: 'nav', command: 'export.svg' },
   { combo: 'escape', context: 'nav', command: 'view.backToGallery' },
+  // AI chat panel (⌘J opens it focused / collapses it — the canvas stays fully usable)
+  { combo: 'mod+j', context: 'nav', command: 'chat.toggle' },
+  { combo: 'mod+j', context: 'gallery', command: 'chat.toggle' },
+  { combo: 'mod+j', context: 'elemsel', command: 'chat.toggle' },
   // help (shift+? assumes a layout where ? is shifted; override via localStorage.keymap otherwise)
   { combo: 'shift+?', context: 'nav', command: 'view.toggleHelp' },
   { combo: 'shift+?', context: 'gallery', command: 'view.toggleHelp' },

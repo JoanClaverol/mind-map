@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from './api/client';
 import { MindMapCanvas } from './canvas/MindMapCanvas';
+import { ChatPanel } from './chat/ChatPanel';
+import { initChat } from './chat/chatStore';
 import { HelpOverlay } from './components/HelpOverlay';
 import { InspectorPanel } from './components/InspectorPanel';
 import { SearchPanel } from './components/SearchPanel';
@@ -90,6 +92,7 @@ function Editor({ mapId }: { mapId: string }) {
 export function App() {
   const route = useHashRoute();
   useEffect(() => initPresence(), []);
+  useEffect(() => initChat(), []);
   useEffect(() => {
     const on = loadSketchPref();
     useStore.getState().setSketch(on);
@@ -97,10 +100,13 @@ export function App() {
   }, []);
   const match = route.match(/^#\/map\/([A-Za-z0-9_-]+)/);
   return (
-    <div className="app">
-      {match ? <Editor key={match[1]} mapId={match[1]} /> : <Gallery />}
-      <HelpOverlay />
-      <Toasts />
+    <div className="shell">
+      <div className="app">
+        {match ? <Editor key={match[1]} mapId={match[1]} /> : <Gallery />}
+        <HelpOverlay />
+        <Toasts />
+      </div>
+      <ChatPanel />
     </div>
   );
 }

@@ -60,6 +60,12 @@ This split keeps the request handlers identical in both environments.
   all-or-nothing; the browser replays them best-effort per op (its doc may have diverged).
   After each batch the store is marked dirty so autosave re-asserts the browser's doc (the
   union of both sides) to disk — the browser wins conflicts.
+- **AI chat** ([`src/chat/`](src/chat)): a side panel (collapsible to a slim bar, `⌘J`)
+  mirroring the server's transcript from `chat` SSE events (`server/agent.ts` holds the
+  truth, so every tab and reload sees the same conversation). Each message carries the
+  open map id and selection; the server turns them into a `<context>` block. While a reply
+  streams, `turnId` is set and live sync folds every incoming batch into ONE history entry
+  (`runCommand(..., { coalesce: true })`) — one ⌘Z undoes the whole reply.
 - **View state is ephemeral.** Hoist (`⌘.`), the search panel (`⌘F`), and the pinned
   dimming filter live in the store next to selection — never inside `doc` — so they are
   not persisted, not undoable, and invisible to MCP clients. The canvas lays out a *view*
@@ -93,6 +99,7 @@ A handful of focused modules under [`server/`](server):
 | `mcp-server.ts` | **Inbound** MCP server exposing mind-map tools to AI clients, including surgical node edits (see [MCP.md](MCP.md)). |
 | `mcp-stdio.ts` | stdio entry point for the inbound MCP server. |
 | `presence.ts` | In-memory "what the user is looking at" (open map, selection, hoist), reported by the tab via `POST /api/view` and read by the `get_active_view` MCP tool. |
+| `agent.ts` | The in-app chat's brain: one `omp acp` child process (Agent Client Protocol over stdio), started on the first message and handed this server's `/mcp` URL, so its edits flow through the same tools, live sync and undo as any MCP client. Keeps the transcript, relays permission requests (shell, file writes) to the panel, broadcasts `chat` events over SSE. Routes: `GET/POST /api/chat`, `/api/chat/{cancel,reset,permission}`. |
 | `exports.ts` | `export_map` round trip: asks a tab to render, validates the PNG/SVG it sends back, saves it symlink-safely under `<maps>/exports/`. |
 | `paths.ts` | `PKG_ROOT` — bundled files (`MCP.md`, `.env`, demo `maps/`) resolve from the install folder, never the cwd. |
 | `events.ts` | In-process pub/sub for external map edits (`map-ops` batches), fanned out to browser tabs over SSE (`GET /api/events`). |

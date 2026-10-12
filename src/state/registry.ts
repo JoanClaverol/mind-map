@@ -25,6 +25,7 @@ import { contentBounds, getCanvasHost, getLastLayout } from '../canvas/layoutCac
 import { fitToContent, zoomAt } from '../canvas/viewport';
 import { buildSvg, download, exportFileName, svgToPng } from '../canvas/exportImage';
 import { applySketchTheme, saveSketchPref } from '../canvas/sketch';
+import { useChat } from '../chat/chatStore';
 import * as cmd from './commands';
 import { useStore } from './store';
 
@@ -729,6 +730,13 @@ export const registry: Record<string, AppCommand> = {
         s.runCommand('setNodeStep', (d) => cmd.setNodeMeta(d, id, { step: next ?? null }));
         s.addToast('info', next ? `Step: ${STEP_LABELS[next]}` : 'Step: none');
       }),
+  },
+  'chat.toggle': {
+    description: 'Open / collapse the AI chat',
+    run: () => {
+      const c = useChat.getState();
+      c.setOpen(!c.open, !c.open);
+    },
   },
   'view.zoomIn': {
     description: 'Zoom in',

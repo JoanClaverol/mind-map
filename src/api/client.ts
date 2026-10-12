@@ -1,4 +1,5 @@
 import type { FolderInfo, MapFile, MapMeta } from '../model/types';
+import type { ChatSnapshot } from '../model/chat';
 
 async function asJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -61,6 +62,25 @@ export const api = {
       headers: JSON_HEADERS,
       body: JSON.stringify({ name: newName }),
     }).then((r) => asJson<{ folders: FolderInfo[] }>(r)),
+
+  chatState: () => fetch('/api/chat').then((r) => asJson<ChatSnapshot>(r)),
+
+  /** Starts a reply; it streams back as `chat` events on /api/events. */
+  chatSend: (text: string, mapId: string | null, selectedId: string | null) =>
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ text, mapId, selectedId }),
+    }).then((r) => asJson<{ ok: boolean }>(r)),
+
+  chatCancel: () => fetch('/api/chat/cancel', { method: 'POST', headers: JSON_HEADERS, body: '{}' }).then((r) => asJson<{ ok: boolean }>(r)),
+
+  chatReset: () => fetch('/api/chat/reset', { method: 'POST', headers: JSON_HEADERS, body: '{}' }).then((r) => asJson<{ ok: boolean }>(r)),
+
+  chatPermission: (id: string, allow: boolean) =>
+    fetch('/api/chat/permission', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ id, allow }) }).then(
+      (r) => asJson<{ ok: boolean }>(r),
+    ),
 
   deleteFolder: (name: string) =>
     fetch(`/api/folders/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) =>

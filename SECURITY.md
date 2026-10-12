@@ -34,6 +34,11 @@ protects against, what it doesn't, and how to report a problem.
   redirect your MCP traffic elsewhere.
 - **The CLI starts processes without a shell**: arguments are passed as lists, so nothing you
   type is interpreted by a shell.
+- **The in-app chat asks before acting on your computer.** Its agent (omp) runs in the
+  folder you started mind-map from and may read files there. Before running a command or
+  changing a file it asks, and the chat shows Allow / Reject. Map edits need no approval
+  because each AI reply is one `⌘Z` away. The chat routes sit behind the same localhost
+  guard as the rest of the API.
 
 ## What to keep in mind
 

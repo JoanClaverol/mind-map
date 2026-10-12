@@ -1,4 +1,5 @@
 import type { MapOp } from '../src/model/ops';
+import type { ChatEvent } from '../src/model/chat';
 
 /**
  * In-process pub/sub for map changes made outside the browser (MCP tools).
@@ -13,7 +14,9 @@ export type ServerEvent =
   // An MCP client asks open tabs to show a map (and optionally select a node).
   | { kind: 'open-map'; mapId: string; nodeId?: string }
   // export_map: the tab renders the map and POSTs the image to /api/exports/:requestId.
-  | { kind: 'export-request'; requestId: string; mapId: string; format: 'png' | 'svg' };
+  | { kind: 'export-request'; requestId: string; mapId: string; format: 'png' | 'svg' }
+  // In-app chat transcript/status changes (see agent.ts).
+  | { kind: 'chat'; event: ChatEvent };
 
 type Subscriber = (e: ServerEvent) => void;
 

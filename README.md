@@ -9,8 +9,8 @@ You can also edit by hand at any time, and `⌘Z` undoes anything the AI did. Th
 [Excalidraw](https://excalidraw.com) or [XMind](https://xmind.app), but made to be driven by
 conversation.
 
-<p align="center"><img src="docs/images/chat-demo.gif" alt="Three chat messages on the left build a Lisbon trip mind map on the right, step by step" width="100%"></p>
-<p align="center"><em>A real session: the conversation with the AI on the left, the map in your browser on the right.</em></p>
+<p align="center"><img src="docs/images/chat-demo.gif" alt="Three messages in the app's AI chat panel build a Lisbon trip mind map on the canvas, step by step" width="100%"></p>
+<p align="center"><em>A real session in the app: the map on the left, the AI chat on the right.</em></p>
 
 - **Use the AI subscription you already have** — Claude, ChatGPT, Gemini, GitHub Copilot…
   no extra account, nothing to pay for this tool.
@@ -20,8 +20,8 @@ conversation.
 
 ## How it works: just ask
 
-Each picture below is one message, exactly as typed, with the AI's real reply (shortened)
-and what it did to the map. Nothing was edited by hand.
+The AI chat lives in a panel next to your map. Each picture below is one message, exactly
+as typed, with the AI's real reply and what it did to the map. Nothing was edited by hand.
 
 **1. Ask for a map.** *"Make a mind map for planning a weekend trip to Lisbon: when to go,
 where to stay, what to see, food, and budget. Keep it short."*
@@ -29,8 +29,7 @@ where to stay, what to see, food, and budget. Keep it short."*
 <p align="center"><img src="docs/images/chat-step1.png" alt="Step 1: the AI creates the Lisbon map from one sentence" width="100%"></p>
 
 **2. Shape it.** *"Color each main branch, give each one a fitting emoji, and add a sticky
-note next to Budget with a rough total."* — the AI even exports a picture of the map to
-check its own layout.
+note next to Budget with a rough total."*
 
 <p align="center"><img src="docs/images/chat-step2.png" alt="Step 2: colors, emoji and a sticky note with the budget total" width="100%"></p>
 
@@ -47,18 +46,18 @@ this map"*, *"export it as a PNG"*.
 Describe an automation in plain words and get a **workflow proof of concept** you can
 discuss before building it in n8n, Zapier or code: typed steps (trigger, AI, tool, if,
 human, output), the data flowing between them written on the arrows, and the model, prompt
-or API settings of each step in its note. A real session, two messages:
+or API settings of each step in its note. A real session, one message:
 
 <p align="center"><img src="docs/images/chat-workflow.png" alt="Two chat messages produce a support-email triage workflow: trigger, AI classification, an if-branch, Slack paging with an error path, an AI draft, human approval and outputs" width="100%"></p>
 
 > *"Sketch a workflow proof of concept, n8n style: when a support email arrives, an AI
 > classifies it. Urgent ones page the on-call engineer on Slack; the rest get an AI-drafted
 > reply that a human approves before it is sent. Use the flow layout."*
->
-> *"Add an error path: if paging on Slack fails, email the team lead instead. And put the
-> model and prompt you would use in the AI steps' notes."*
 
-In omp, `/mind-map:build_workflow goal="…"` runs the same routine in one line. By hand:
+Then keep refining it in the chat — *"add an error path if Slack fails"*, *"put the model
+and prompt you'd use in the AI steps' notes"*.
+
+From the terminal, `/mind-map:build_workflow goal="…"` in omp runs the same routine. By hand:
 `⇧S` switches a map to the flow layout (or `⇧B` just one branch), `⇧W` cycles a step's
 type, and `⇧I` edits its note and the label of the arrow coming into it.
 
@@ -84,9 +83,9 @@ The same content can be shown the way that fits it — switch with `⇧S` (whole
 
 ## Works with the AI you already pay for
 
-mind-map doesn't contain an AI itself — it plugs into an AI assistant app through an open
-standard called [MCP](https://modelcontextprotocol.io). The easiest route is **omp**, a free
-assistant app that can sign in with almost any subscription:
+mind-map doesn't contain an AI model itself. Its chat panel runs **omp**, a free AI
+assistant that signs in with almost any subscription, on your computer — so you use the
+plan you already pay for:
 
 | You have… | Sign in to omp with… |
 | --- | --- |
@@ -96,8 +95,9 @@ assistant app that can sign in with almost any subscription:
 | **GitHub Copilot** | GitHub Copilot |
 | An API key (OpenAI, Anthropic, Gemini, OpenRouter, Mistral, Groq, xAI…) | the matching provider |
 
-Already use **Claude Code**, **Codex**, **Gemini CLI**, **Claude Desktop** or **opencode**?
-Those work too — see [Use a different AI app](#use-a-different-ai-app).
+Prefer to work from **Claude Code**, **Codex**, **Gemini CLI**, **Claude Desktop** or
+**opencode**? They can drive the map too, through the open [MCP](https://modelcontextprotocol.io)
+standard — see [Use a different AI app](#use-a-different-ai-app).
 
 ## Install (about 10 minutes, once)
 
@@ -141,16 +141,17 @@ and open a new one** so the command is found.
 
 ```bash
 mkdir -p ~/Mindmaps && cd ~/Mindmaps
-mindmap omp
+mindmap up
 ```
 
-Your browser opens on an empty map gallery, and omp starts in the Terminal, already
-connected. Put the two windows side by side and ask, in your own words:
+Your browser opens on the map gallery with the **AI chat** panel on the right. Type what you
+want, in your own words, and press Enter:
 
 > *"Make a mind map about launching a podcast: format, equipment, audience, distribution and
 > budget. Add a sticky note with the most important advice."*
 
-Watch it appear. Then keep going:
+The map opens and fills in while you watch. Then keep going — the AI always knows which map
+is open and which topic you've selected, so "this branch" just works:
 
 > *"Color the branches, mark open questions with ❓ and a short note."*
 
@@ -158,11 +159,25 @@ Watch it appear. Then keep going:
 
 > *"Quiz me on this map, one question at a time."*
 
-When you're done, quit omp (`/exit`) — the map server stops with it. Your maps are saved as
-files in the `mindmaps` folder of wherever you ran the command, so `mindmap omp` in another
-folder gives that project its own maps.
+- **One ⌘Z undoes a whole AI reply**, however many changes it made.
+- **`⌘J` collapses the chat** to a slim bar, so the whole canvas is yours to explore; `⌘J`
+  again brings it back with the cursor in the message box. `Esc` returns to the map without
+  closing it.
+- **Stop** interrupts a reply; **＋** starts a fresh conversation.
+- Before the AI runs a command or changes a file on your computer, it **asks** — you click
+  Allow or Reject in the chat. Map edits never need approval (they're all undoable).
 
-**One-line routines.** omp also has ready-made commands — type them instead of a prompt:
+<p align="center"><img src="docs/images/chat-collapsed.png" alt="The chat collapsed to a slim bar on the right, leaving the whole canvas for the map" width="100%"></p>
+
+Your maps are saved as files in the `mindmaps` folder of wherever you ran the command, so
+`mindmap up` in another folder gives that project its own maps — and the AI can read that
+folder's files to ground a map (say, *"map the structure of this repo"*). Press `Ctrl+C` in
+the Terminal to stop.
+
+**Prefer the terminal?** `mindmap omp` opens the same canvas and starts omp in the Terminal,
+already connected — and adds ready-made one-line routines:
+
+**One-line routines** (type them in omp instead of a prompt):
 
 | Command | What it does |
 | --- | --- |
@@ -233,20 +248,13 @@ websites, so nothing on the internet can read your maps through it. See
 | `mindmap: command not found` | Open a **new** Terminal window after installing. Still missing? Run `~/mind-map/install.sh` again and read its last lines. |
 | `node: command not found` | Install Node.js from [nodejs.org](https://nodejs.org) (LTS), then open a new Terminal window. |
 | `mind-map isn't built — run "pnpm build"` | Run `~/mind-map/install.sh` again (also needed after every update). |
+| The chat says omp "is not installed" | Install omp and sign in (step 2 of [Install](#install-about-10-minutes-once)), then send the message again. |
+| The chat says it can't sign in / no model | Run `omp` in a Terminal, type `/login` and pick your provider. |
 | The AI says it has no mind-map tools | Apps load tools when they start — quit and restart the app after adding the config. In Claude Code, check with `/mcp`. |
 | The AI's edits don't show up in the browser | Use the **HTTP** config pointing at the address `mindmap up` printed, or start with `mindmap omp` / `mindmap claude`, which connect everything for you. |
 | Claude Desktop can't start the server | Use the snippet from `mindmap config claude-desktop` — it contains the full path to Node, which desktop apps need. |
 | Tab says "This map no longer exists on the server" | The map was deleted, or the tab belongs to an earlier session. Copy what you need (`⌘C`) and close the tab. |
 | "Autosave failed" after updating | Reload the browser tab. |
-
-## Roadmap
-
-**Chat inside the app (next).** A side panel to talk to your map without leaving the
-browser. It will use omp behind the scenes, so it works with the same subscriptions and
-never edits files directly — every change goes through the same tools as the terminal, so
-`⌘Z` undoes a whole AI reply. It will see the open map, your selection, and the project
-folder you started from. The panel collapses to a slim bar with one key, so the whole
-canvas is free to navigate while the AI keeps working.
 
 ## Reference
 
@@ -316,6 +324,7 @@ surface:
 | `⇧D` | Toggle the **sketch look** — hand-drawn strokes and a handwritten font, Excalidraw-style (remembered per browser; exports follow it) |
 | `⌘E` / `⌘⇧E` | **Export** the map as PNG / SVG (what you see — hoist and pinned filters apply) |
 | `Esc` | Back out one layer: clear the pinned filter → exit hoist → back to gallery |
+| `⌘J` | Open / collapse the **AI chat** panel (opening puts the cursor in the message box; `Esc` in the chat returns to the map) |
 | `?` | Keyboard cheatsheet — every bound command, generated from the live keymap (works in the gallery too) |
 
 **Mouse:** scroll to pan, pinch (or `⌃`+scroll) to zoom at cursor, drag empty canvas to pan,

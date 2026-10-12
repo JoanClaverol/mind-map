@@ -1,6 +1,7 @@
 import { api } from '../api/client';
 import { denormalize, serializeElements, serializeFloating } from '../model/doc';
 import { applyDocOp, type MapOp } from '../model/ops';
+import { useChat } from '../chat/chatStore';
 import { useStore } from './store';
 
 /**
@@ -37,11 +38,18 @@ export function initLiveSync(mapId: string): { ready: Promise<void>; close(): vo
     const s = useStore.getState();
     // One runCommand for the whole batch = one undo entry. Best-effort per op:
     // a stale op fails inside applyDocOp → zero patches for it → clean no-op.
-    const label = ops.length === 1 ? `mcp.${ops[0].type}` : 'mcp.batch';
-    s.runCommand(label, (draft) => {
-      for (const op of ops) applyDocOp(draft, op);
-      return {}; // keep the user's selection; clampSelection covers a deleted one
-    });
+    // While the in-app chat is replying, all of its edits fold into ONE history
+    // entry, so a single ⌘Z takes back the whole reply.
+    const turn = useChat.getState().turnId;
+    const label = turn ? `ai.chat:${turn}` : ops.length === 1 ? `mcp.${ops[0].type}` : 'mcp.batch';
+    s.runCommand(
+      label,
+      (draft) => {
+        for (const op of ops) applyDocOp(draft, op);
+        return {}; // keep the user's selection; clampSelection covers a deleted one
+      },
+      { coalesce: !!turn },
+    );
     const now = useStore.getState();
     if (now.editing && now.doc && !now.doc.nodes[now.editing.nodeId]) now.abortEdit();
     now.markDirty(); // ALWAYS — re-assert the union to disk (see doc comment)

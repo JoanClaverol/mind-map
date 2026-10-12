@@ -109,7 +109,12 @@ interface StoreState {
   loadMap(map: MapFile): void;
   closeMap(): void;
   setTitle(title: string): void;
-  runCommand(label: string, fn: (draft: Draft<Doc>) => CommandResult): void;
+  /**
+   * opts.coalesce: fold into the previous history entry when it has the same
+   * label (and nothing was undone since) — the chat uses it so one ⌘Z undoes a
+   * whole AI reply, however many tool calls it made.
+   */
+  runCommand(label: string, fn: (draft: Draft<Doc>) => CommandResult, opts?: { coalesce?: boolean }): void;
   undo(): void;
   redo(): void;
   select(id: string | null): void;
@@ -308,7 +313,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({ title, rev: s.rev + 1, saveState: 'dirty' }));
   },
 
-  runCommand(label, fn) {
+  runCommand(label, fn, opts) {
     const { doc, selectedId } = get();
     if (!doc) return;
     let result: CommandResult = {};
@@ -325,14 +330,30 @@ export const useStore = create<StoreState>((set, get) => ({
       selectionBefore: selectedId,
       selectionAfter,
     };
-    set((s) => ({
-      doc: next,
-      selectedId: clampSelection(next, selectionAfter),
-      undoStack: [...s.undoStack.slice(-(HISTORY_CAP - 1)), entry],
-      redoStack: [],
-      rev: s.rev + 1,
-      saveState: 'dirty',
-    }));
+    set((s) => {
+      const top = s.undoStack[s.undoStack.length - 1];
+      const merge = opts?.coalesce && top?.label === label && s.redoStack.length === 0;
+      const undoStack = merge
+        ? [
+            ...s.undoStack.slice(0, -1),
+            {
+              ...entry,
+              // Replay in order going forward; undo the newest change first.
+              patches: [...top.patches, ...patches],
+              inversePatches: [...inversePatches, ...top.inversePatches],
+              selectionBefore: top.selectionBefore,
+            },
+          ]
+        : [...s.undoStack.slice(-(HISTORY_CAP - 1)), entry];
+      return {
+        doc: next,
+        selectedId: clampSelection(next, selectionAfter),
+        undoStack,
+        redoStack: [],
+        rev: s.rev + 1,
+        saveState: 'dirty',
+      };
+    });
   },
 
   undo() {

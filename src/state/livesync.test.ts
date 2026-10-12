@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MapFile } from '../model/types';
+import { useChat } from '../chat/chatStore';
 import { initLiveSync } from './livesync';
 import { useStore } from './store';
 
@@ -132,6 +133,29 @@ describe('livesync', () => {
     expect(after.doc!.nodes.bbbbbbbbbbbb).toBeUndefined();
     expect(after.doc!.nodes.aaaaaaaaaaaa.text).toBe('A');
     expect(after.doc!.relationships).toEqual([]);
+  });
+
+  it('edits made during one chat reply fold into a single undo step', () => {
+    useChat.setState({ turnId: 'turn1' });
+    try {
+      emitOp({ type: 'add_nodes', parentId: 'root00000001', branches: [{ id: 'bbbbbbbbbbbb', text: 'B', children: [] }] });
+      emitOp({ type: 'edit_node', nodeId: 'aaaaaaaaaaaa', text: 'A edited' });
+      emitOp({ type: 'set_node_meta', nodeId: 'bbbbbbbbbbbb', color: 'sage' });
+    } finally {
+      useChat.setState({ turnId: null });
+    }
+    emitOp({ type: 'edit_node', nodeId: 'bbbbbbbbbbbb', text: 'B by terminal' }); // after the reply: its own step
+    expect(useStore.getState().undoStack.map((e) => e.label)).toEqual(['ai.chat:turn1', 'mcp.edit_node']);
+
+    useStore.getState().undo();
+    useStore.getState().undo();
+    const s = useStore.getState();
+    expect(s.doc!.nodes.bbbbbbbbbbbb).toBeUndefined();
+    expect(s.doc!.nodes.aaaaaaaaaaaa.text).toBe('A');
+
+    useStore.getState().redo();
+    expect(useStore.getState().doc!.nodes.bbbbbbbbbbbb).toMatchObject({ text: 'B', color: 'sage' });
+    expect(useStore.getState().doc!.nodes.aaaaaaaaaaaa.text).toBe('A edited');
   });
 
   it('a partially stale batch applies the valid ops and still marks dirty', () => {

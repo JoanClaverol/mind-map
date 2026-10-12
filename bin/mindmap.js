@@ -2,7 +2,8 @@
 /**
  * mindmap — the mindmap-mcp CLI.
  *
- *   mindmap up [--port N]     serve <cwd>/mindmaps/ on a free port (foreground)
+ *   mindmap up [--port N]     serve <cwd>/mindmaps/ on a free port and open the browser
+ *                             (foreground; --no-open skips the browser)
  *   mindmap claude [args…]    up + open browser + launch claude with the
  *                             mind-map MCP injected; teardown when claude exits
  *   mindmap omp [args…]       same, for omp (oh-my-pi): injects the server into
@@ -115,7 +116,8 @@ async function startServer({ preferredPort, logToFile }) {
   const out = logToFile ? openSync(path.join(sessionDir, 'server.log'), 'w') : 'inherit';
   const child = spawn(path.join(pkgRoot, 'node_modules', '.bin', 'tsx'), ['server/standalone.ts'], {
     cwd: pkgRoot,
-    env: { ...process.env, PORT: String(port), MAPS_DIR: mapsDir },
+    // MINDMAP_PROJECT_DIR = where the in-app chat's agent works (reads project files).
+    env: { ...process.env, PORT: String(port), MAPS_DIR: mapsDir, MINDMAP_PROJECT_DIR: projectDir },
     stdio: ['ignore', out, out],
   });
   await waitUntilReady(port, child);
@@ -140,6 +142,7 @@ async function up(args) {
   console.log(`  ➜  mcp:      http://localhost:${port}/mcp\n`);
   console.log(`  claude --mcp-config ${path.relative(projectDir, mcpConfigPath)}\n`);
   console.log('  ^C to stop — nothing persists outside mindmaps/\n');
+  if (!args.includes('--no-open')) openBrowser(`http://localhost:${port}`);
 
   const stop = () => {
     child.kill();
@@ -364,7 +367,7 @@ switch (command) {
     console.log(`mindmap — a mind-map canvas your LLM can co-edit live (mindmap-mcp)
 
 Usage:
-  mindmap up [--port N]      serve ./mindmaps on a free port (Ctrl+C to stop)
+  mindmap up [--port N]      serve ./mindmaps, open the browser — chat with the AI there (Ctrl+C to stop)
   mindmap claude [args…]     up + open browser + launch claude with the tools
   mindmap omp [args…]        same, launching omp (oh-my-pi)
   mindmap stdio [--maps D]   stdio MCP server (default maps dir: the main library)

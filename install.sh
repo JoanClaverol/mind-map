@@ -42,5 +42,5 @@ case ":$PATH:" in
 esac
 
 say "Done! ✅"
-echo "Next: open a new terminal window and run:  mindmap omp"
-echo "(or 'mindmap up' to just open the canvas — see README.md for other AI apps)"
+echo "Next: open a new terminal window and run:  mindmap up   (then chat with the AI in the browser)"
+echo "(mindmap omp starts the AI in the terminal instead — see README.md for other AI apps)"

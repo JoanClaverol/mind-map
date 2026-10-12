@@ -185,6 +185,23 @@ function elementsSection(doc: Doc, scope?: Set<string>): string | null {
   return `## Canvas elements\n${lines.join('\n')}`;
 }
 
+/**
+ * A whole map as an id-annotated outline plus its arrows, groups and canvas
+ * elements — what read_map_markdown returns and what the in-app chat sends
+ * as context.
+ */
+export function mapMarkdown(map: MapFile): string {
+  const doc = docFromMap(map);
+  const markdown = branchToMarkdown(doc, map.root.id, { ids: true, meta: true });
+  const floatingBlocks = doc.floating.map((f) => branchToMarkdown(doc, f.rootId, { ids: true, meta: true }));
+  const floatingSection = floatingBlocks.length ? `\n\n## Floating trees\n${floatingBlocks.join('\n\n')}` : '';
+  const sections = [relationshipsSection(doc), groupsSection(doc), elementsSection(doc)].filter(
+    (s): s is string => s !== null,
+  );
+  const tail = sections.length ? `\n\n${sections.join('\n\n')}` : '';
+  return `# ${map.title}\n\n${markdown}${floatingSection}${tail}`;
+}
+
 async function readTextFile(...segments: string[]): Promise<string | null> {
   try {
     return await fs.readFile(path.resolve(PKG_ROOT, ...segments), 'utf8');
@@ -415,17 +432,7 @@ export function createMcpServer(): McpServer {
       if (!storage.isValidId(args.map_id)) return errorResult('invalid map id');
       const map = await storage.readMap(args.map_id);
       if (!map) return errorResult('map not found');
-      const doc = docFromMap(map);
-      const markdown = branchToMarkdown(doc, map.root.id, { ids: true, meta: true });
-      const floatingBlocks = doc.floating.map((f) => branchToMarkdown(doc, f.rootId, { ids: true, meta: true }));
-      const floatingSection = floatingBlocks.length ? `\n\n## Floating trees\n${floatingBlocks.join('\n\n')}` : '';
-      const sections = [relationshipsSection(doc), groupsSection(doc), elementsSection(doc)].filter(
-        (s): s is string => s !== null,
-      );
-      const tail = sections.length ? `\n\n${sections.join('\n\n')}` : '';
-      return {
-        content: [{ type: 'text', text: `# ${map.title}\n\n${markdown}${floatingSection}${tail}` }],
-      };
+      return { content: [{ type: 'text', text: mapMarkdown(map) }] };
     },
   );
 
