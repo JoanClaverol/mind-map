@@ -3,7 +3,7 @@ import { buildIndex, comboFromEvent, isPrintable, resolveCommand } from '../hotk
 import { DEFAULT_KEYMAP, loadKeymapOverrides, resolveKeymap } from '../hotkeys/keymap';
 import { layoutTree } from '../layout/layout';
 import { measureText } from '../layout/measure';
-import { floatingEntry, subtreeIds, visibleIds } from '../model/doc';
+import { buildParentMap, floatingEntry, subtreeIds, visibleIds } from '../model/doc';
 import { searchMatches, viewScope } from '../model/search';
 import { MIN_ELEMENT_SIZE, type CanvasElement, type Position } from '../model/types';
 import { addElement, addFloatingTree, detachNode, editElement, moveNode, moveTree } from '../state/commands';
@@ -13,6 +13,7 @@ import { runCommandById } from '../state/registry';
 import { canvasMode, useStore } from '../state/store';
 import { distanceToNearestRect, dropTargetsEqual, resolveDropTarget, type DropTarget } from './dnd';
 import { EdgeView } from './EdgeView';
+import { flowEdgeGeometry } from './flowEdge';
 import { ElementEditor } from './ElementEditor';
 import { layoutElements } from './elements';
 import { ElementView } from './ElementView';
@@ -121,11 +122,24 @@ export function MindMapCanvas() {
   /** Arrow endpoints can be nodes or elements. */
   const linkRect = (id: string): Rect | undefined => layout?.rects.get(id) ?? shownElementRect(id);
 
-  // What arrow labels steer clear of. Stable per layout so memoized arrows don't re-render on pan.
-  const labelObstacles = useMemo(
-    () => [...(layout?.rects.values() ?? []), ...elementRects.values()],
-    [layout, elementRects],
-  );
+  // What arrows (their lines and labels) steer clear of: nodes, canvas elements,
+  // and the data labels on workflow connectors. Stable per layout so memoized
+  // arrows don't re-render on pan.
+  const labelObstacles = useMemo(() => {
+    const flowLabels: Rect[] = [];
+    if (layout && viewDoc && layout.flowEdges.size) {
+      const parents = buildParentMap(viewDoc);
+      for (const id of layout.flowEdges) {
+        const label = viewDoc.nodes[id]?.edgeLabel;
+        const parent = label ? parents[id] : null;
+        const pr = parent ? layout.rects.get(parent) : undefined;
+        const cr = layout.rects.get(id);
+        const rect = pr && cr ? flowEdgeGeometry(pr, cr, label).labelRect : null;
+        if (rect) flowLabels.push(rect);
+      }
+    }
+    return [...(layout?.rects.values() ?? []), ...elementRects.values(), ...flowLabels];
+  }, [layout, viewDoc, elementRects]);
 
   // The selected element vanished (undo, AI delete) — drop the stale selection.
   useEffect(() => {
@@ -459,7 +473,7 @@ export function MindMapCanvas() {
   const linkSourceId = linking?.sourceId ?? null;
   const linkFrom = linkSourceId ? layout.rects.get(linkSourceId) : undefined;
   const linkTo = selectedId && selectedId !== linkSourceId ? layout.rects.get(selectedId) : undefined;
-  const pendingArrow = linkFrom && linkTo ? relationshipGeometry(linkFrom, linkTo).d : null;
+  const pendingArrow = linkFrom && linkTo ? relationshipGeometry(linkFrom, linkTo, undefined, labelObstacles).d : null;
 
   // Where the label editor floats, if open.
   const editingRelData = editingRel ? doc.relationships.find((r) => r.id === editingRel.relId) : undefined;
@@ -470,7 +484,7 @@ export function MindMapCanvas() {
       ? relationshipGeometry(editFrom, editTo, {
           width: relLabelWidth(editingRelData.label || 'label'),
           obstacles: labelObstacles,
-        }).mid
+        }, labelObstacles).mid
       : undefined;
 
   const renderRelationships = (part: 'line' | 'label') =>

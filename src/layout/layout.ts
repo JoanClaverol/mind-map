@@ -53,7 +53,7 @@ export const DEFAULT_LAYOUT: LayoutOptions = { gapX: 48, gapY: 14 };
 
 /** Flow (workflow) spacing: room for an arrowhead, and siblings further apart. */
 export const FLOW_GAP_X = 72;
-export const FLOW_GAP_Y = 28;
+export const FLOW_GAP_Y = 40;
 /** Clearance on each side of an edge label inside a flow gap. */
 const FLOW_LABEL_PAD = 22;
 

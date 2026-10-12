@@ -439,8 +439,10 @@ arrows: a node's children are what runs next; several children = a branch.
    children, it names the branch (`yes` / `no` / `refund` …).
 3. **Configure in ONE `apply_ops` batch**: a `note` on each `ai`/`tool` step with its
    configuration — model and prompt for AI steps, app + operation + key fields for tools,
-   the rule for conditions. Where branches **merge** again or a loop goes back, add a
-   labeled `add_relationship` (the tree can't express a join). Stickies (`add_element`,
+   the rule for conditions. Where branches **merge** again or a loop goes back (e.g. a
+   rejected draft returns to the drafting step), add a labeled `add_relationship` — the
+   tree can't express a join. These arrows route themselves around steps and arrow labels,
+   so keep them; don't replace them with stickies. Stickies (`add_element`,
    anchored) for open questions: credentials, rate limits, error handling.
 4. **Look**: `export_map` and check that the flow reads left to right without crossings.
 5. **Report**: the steps in one line each, the assumptions, and what to decide before

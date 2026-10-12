@@ -17,7 +17,7 @@ interface RelationshipViewProps {
    * the label chip ON TOP, slid along the curve to a spot clear of `obstacles`.
    */
   part: 'line' | 'label';
-  /** Node + element rects the label avoids (stable identity per layout). */
+  /** Node, element and flow-label rects the arrow and its label avoid (stable identity per layout). */
   obstacles: Rect[];
   onSelect(e: React.MouseEvent): void;
   onEdit(): void;
@@ -28,10 +28,13 @@ export const RelationshipView = memo(RelationshipViewImpl, sameDataProps);
 function RelationshipViewImpl({ rel, from, to, selected, part, obstacles, onSelect, onEdit }: RelationshipViewProps) {
   const sketch = useStore((s) => s.sketch);
   const labelWidth = rel.label ? relLabelWidth(rel.label) : 0;
+  // Both passes route the same way (the line steers around `obstacles` too),
+  // so the label always sits on the drawn curve.
   const { d, mid } = relationshipGeometry(
     from,
     to,
-    part === 'label' && rel.label ? { width: labelWidth, obstacles } : undefined,
+    rel.label ? { width: labelWidth, obstacles } : undefined,
+    obstacles,
   );
   const markerEnd = `url(#${selected ? 'rel-arrow-selected' : 'rel-arrow'})`;
   const press = (e: React.MouseEvent) => {
