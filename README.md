@@ -8,9 +8,12 @@ adds, restructures, and connects nodes through the MCP server; every change stre
 your canvas instantly and lands in your undo history (`⌘Z` reverts an AI edit like your
 own). You keep editing by hand the whole time — on conflicts, your version wins.
 
-Underneath it's a keyboard-first, [XMind](https://xmind.app)-style mind mapper: every
-action has a hotkey, and each map is a human-readable JSON file that's friendly to git and
-backups. Everything runs on your machine — no API keys, no external services, no cloud.
+Underneath it's a keyboard-first, [XMind](https://xmind.app)-style mind mapper grown into
+an [Excalidraw](https://excalidraw.com)-like canvas — sticky notes, shapes, freehand ink,
+a hand-drawn look, PNG/SVG export — built to be driven mainly by AI, with
+omp (oh-my-pi) as the primary agent (`mindmap omp`). Every
+action also has a hotkey, and each map is a human-readable JSON file that's friendly to git
+and backups. Everything runs on your machine — no API keys, no external services, no cloud.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -327,7 +330,7 @@ your maps.
 
 | Symptom | Fix |
 | --- | --- |
-| `mindmap: command not found` after install | The global bin dir isn't on your PATH — run `pnpm setup`, restart the shell, then `pnpm add -g link:.` again. Or skip the CLI and use the repo paths directly. |
+| `mindmap: command not found` after install | The global bin dir isn't on your PATH — run `pnpm setup`, restart the shell, then `pnpm add -g link:.` again. Or symlink it into a dir already on your PATH: `ln -s "$PWD/bin/mindmap.js" ~/.local/bin/mindmap`. |
 | `mind-map isn't built — run "pnpm build"` | The CLI serves the compiled UI: run `pnpm build` in the repo once (and after every `git pull`). |
 | The client doesn't list the mindmap tools | MCP servers load at session start — restart the client/session after adding the config. In Claude Code, check with `/mcp`. |
 | AI edits don't appear in my browser | Over **stdio**, edits go live only when the app is already running on the *same* maps folder when the client starts the server (it then bridges to the app — the client's log says "bridging to the running app"). Start the app first and restart the client, or use the **HTTP** config (`http://localhost:5454/mcp`). Set `MINDMAP_URL` if the app runs on another port. |
@@ -336,6 +339,21 @@ your maps.
 | Browser tab shows "Autosave failed" after updating | The tab predates a schema upgrade — reload it. |
 | Tab says "This map no longer exists on the server" | The map was deleted elsewhere, or the tab is left over from an earlier session that used the same port (per-project sessions reuse 5460+). The server refuses to recreate maps from a tab — copy what you need (`⌘C`) and close the tab. |
 | Two people/tools editing the same map | It's a single-user local tool: the browser wins conflicts, and simultaneous browser tabs on one map are last-write-wins. |
+
+## Roadmap
+
+**In-app AI chat (next).** The app is meant to be LLM-centred: a side panel where you talk
+to the map without leaving the browser. The plan:
+
+- **omp is the brain** — the server runs `omp acp` (Agent Client Protocol) in the
+  background and hands it this app's MCP server, so the chat uses your omp models,
+  credentials, and settings, and the exact same tools as the terminal. It never edits the
+  JSON directly: every change goes through the MCP ops, so validation, live sync, and undo
+  keep working.
+- **Side panel** with the conversation history; the map changes live next to it.
+- **Changes apply directly** — one `⌘Z` reverts a whole AI reply.
+- **Context sent automatically** — the open map in full, the selected node ("this branch"),
+  and read access to the project folder `mindmap` was launched from.
 
 ## Documentation
 
