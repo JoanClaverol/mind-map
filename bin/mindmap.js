@@ -307,6 +307,19 @@ url = "http://localhost:5454/mcp"`,
     "mindmap": { "command": "node", "args": ["${binPath}", "stdio"] }
   }
 }`,
+    gemini: `# Gemini CLI — ~/.gemini/settings.json (user) or .gemini/settings.json (project)
+{
+  "mcpServers": {
+    "mindmap": { "command": "node", "args": ["${binPath}", "stdio"] }
+  }
+}
+
+# or, HTTP against a running app:
+{
+  "mcpServers": {
+    "mindmap": { "httpUrl": "http://localhost:5454/mcp" }
+  }
+}`,
     opencode: `# opencode — opencode.json in your project
 {
   "mcp": {
@@ -355,7 +368,7 @@ Usage:
   mindmap claude [args…]     up + open browser + launch claude with the tools
   mindmap omp [args…]        same, launching omp (oh-my-pi)
   mindmap stdio [--maps D]   stdio MCP server (default maps dir: the main library)
-  mindmap config [client]    MCP config for claude-code | claude-desktop | codex | opencode | omp
+  mindmap config [client]    MCP config for claude-code | claude-desktop | codex | gemini | opencode | omp
 
 Per-project maps live in ./mindmaps (commit them); session files in ./.mindmap (git-excluded).`);
     process.exit(command ? 1 : 0);

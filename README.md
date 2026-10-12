@@ -1,201 +1,194 @@
-# mindmap-mcp
+# mind-map
 
-**A local mind-map canvas any MCP-capable LLM can co-edit live, while you edit it too.**
+**A visual whiteboard for your ideas that your AI draws for you — live, on your own computer.**
 
-Open a map in your browser, connect Claude Code, Claude Desktop, Codex, opencode — or any
-other [MCP](https://modelcontextprotocol.io) client — and develop ideas together: the AI
-adds, restructures, and connects nodes through the MCP server; every change streams onto
-your canvas instantly and lands in your undo history (`⌘Z` reverts an AI edit like your
-own). You keep editing by hand the whole time — on conflicts, your version wins.
+You describe what you want ("map out a launch plan for my podcast"), and your AI assistant
+builds the mind map in front of you: topics, colors, sticky notes, arrows, even hand-drawn
+underlines. You can keep editing by hand at the same time, and `⌘Z` undoes anything the AI
+did. Think [Excalidraw](https://excalidraw.com) or [XMind](https://xmind.app), but made to
+be driven by AI.
 
-Underneath it's a keyboard-first, [XMind](https://xmind.app)-style mind mapper grown into
-an [Excalidraw](https://excalidraw.com)-like canvas — sticky notes, shapes, freehand ink,
-a hand-drawn look, PNG/SVG export — built to be driven mainly by AI, with
-omp (oh-my-pi) as the primary agent (`mindmap omp`). Every
-action also has a hotkey, and each map is a human-readable JSON file that's friendly to git
-and backups. Everything runs on your machine — no API keys, no external services, no cloud.
+<p align="center"><img src="docs/images/map.png" alt="A mind map about launching a podcast, with colored branches, a sticky note, an arrow and a hand-drawn underline" width="100%"></p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+- **Use the AI subscription you already have** — Claude, ChatGPT, Gemini, GitHub Copilot…
+  no extra account, nothing to pay for this tool.
+- **Private by default** — your maps are plain files on your computer. There is no cloud and
+  no sign-up. (Your AI app sends what it reads to its own provider, as it always does.)
+- **Free and open source** ([MIT](LICENSE)).
 
-<!-- Placeholder art. Replace docs/screenshot.svg with a real screenshot or GIF (a .png/.gif is fine — just update the path below). -->
-<p align="center"><img src="docs/screenshot.svg" alt="mindmap-mcp" width="100%"></p>
+<p align="center"><img src="docs/images/sketch.png" alt="The same map in the hand-drawn sketch look" width="100%"></p>
+<p align="center"><em>Press <code>⇧D</code> for the hand-drawn look. Export to PNG or SVG with <code>⌘E</code>.</em></p>
 
-## How it works
+## Works with the AI you already pay for
 
-Maps are plain JSON files. One small local server exposes them two ways at once: to your
-**browser** (the canvas) and to your **LLM** (the MCP server). AI edits are surgical
-operations — add/move/edit/delete nodes, draw relationship arrows, atomic batches —
-broadcast over SSE to the open tab and replayed through the same undo pipeline as your
-keystrokes. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
+mind-map doesn't contain an AI itself — it plugs into an AI assistant app through an open
+standard called [MCP](https://modelcontextprotocol.io). The easiest route is **omp**, a free
+assistant app that can sign in with almost any subscription:
 
-## Requirements
+| You have… | Sign in to omp with… |
+| --- | --- |
+| **Claude** Pro or Max | Anthropic |
+| **ChatGPT** Plus or Pro | OpenAI Codex |
+| **Google** account (Gemini) | Google |
+| **GitHub Copilot** | GitHub Copilot |
+| An API key (OpenAI, Anthropic, Gemini, OpenRouter, Mistral, Groq, xAI…) | the matching provider |
 
-- [Node.js](https://nodejs.org) 20+ and [pnpm](https://pnpm.io) 9+ (`npm install -g pnpm`)
-- macOS or Linux. On Windows, use [WSL](https://learn.microsoft.com/windows/wsl/) — the
-  CLI relies on Unix conventions and is untested natively.
+Already use **Claude Code**, **Codex**, **Gemini CLI**, **Claude Desktop** or **opencode**?
+Those work too — see [Use a different AI app](#use-a-different-ai-app).
 
-## Install
+## Install (about 10 minutes, once)
 
-```bash
-git clone https://github.com/joanclaverol/mind-map.git && cd mind-map
-pnpm install && pnpm build
-pnpm add -g link:.        # exposes the `mindmap` command (symlinks to this clone)
-```
+You'll type a few commands into the **Terminal** — copy each line, paste it, press Enter.
 
-Check it worked:
+> **Open the Terminal:** on a Mac press `⌘ Space`, type *Terminal*, press Enter. On Linux
+> it's in your applications menu. On Windows, install [WSL](https://learn.microsoft.com/windows/wsl/install)
+> first and use its Ubuntu terminal.
 
-```bash
-mindmap                   # prints usage — if "command not found", see Troubleshooting
-```
-
-That's the whole install. Updating later is `git pull && pnpm install && pnpm build`.
-
-## Step 1 — Run the app and make a first map
+**1. Install Node.js** — download the **LTS** installer from [nodejs.org](https://nodejs.org)
+and run it like any other app. Check it worked:
 
 ```bash
-pnpm dev                  # hot reload; or `pnpm start` for the built app
+node --version        # should print v20 or higher
 ```
 
-Open <http://localhost:5454>. You land in the gallery — press `n`, type a title, `Enter`.
-On the canvas: `Tab` adds a child, `Enter` a sibling, just **type** to replace the selected
-node's text, `hjkl` or arrows to move around, `?` shows every hotkey. Maps autosave to
-`maps/*.json` as you type.
-
-Leave this running and the browser tab open — that's your half of the co-editing session.
-
-## Step 2 — Connect your AI
-
-`mindmap config` prints ready-to-paste config for every supported client; pass a name for
-just one:
+**2. Install omp and sign in with your subscription:**
 
 ```bash
-mindmap config claude-code     # or: claude-desktop | codex | opencode | omp
+curl -fsSL https://omp.sh/install | sh
+omp                   # starts omp — type /login, pick your provider, follow the browser prompt
 ```
 
-Each client offers two transports — **pick the right one for what you want**:
+Type `/exit` (or press `Ctrl+C` twice) to leave omp once you're signed in.
+(Homebrew users can `brew install can1357/tap/omp` instead. More on omp: [github.com/can1357/oh-my-pi](https://github.com/can1357/oh-my-pi).)
 
-| Transport | What it is | When to use it |
+**3. Download and install mind-map:**
+
+```bash
+git clone https://github.com/JoanClaverol/mind-map.git ~/mind-map
+~/mind-map/install.sh
+```
+
+> On a Mac, the first `git` command may offer to install the "command line developer
+> tools" — accept, wait for it to finish, and run the line again.
+
+The installer sets everything up and adds a `mindmap` command. **Close the Terminal window
+and open a new one** so the command is found.
+
+## Make your first map
+
+```bash
+mkdir -p ~/Mindmaps && cd ~/Mindmaps
+mindmap omp
+```
+
+Your browser opens on an empty map gallery, and omp starts in the Terminal, already
+connected. Put the two windows side by side and ask, in your own words:
+
+> *"Make a mind map about launching a podcast: format, equipment, audience, distribution and
+> budget. Add a sticky note with the most important advice."*
+
+Watch it appear. Then keep going:
+
+> *"Color the branches, mark open questions with ❓ and a short note."*
+
+> *"Don't add anything — challenge this map: where is my thinking weak?"*
+
+> *"Quiz me on this map, one question at a time."*
+
+When you're done, quit omp (`/exit`) — the map server stops with it. Your maps are saved as
+files in the `mindmaps` folder of wherever you ran the command, so `mindmap omp` in another
+folder gives that project its own maps.
+
+**One-line routines.** omp also has ready-made commands — type them instead of a prompt:
+
+| Command | What it does |
+| --- | --- |
+| `/mind-map:build_map topic="Weekend in Lisbon"` | A polished new map on a topic |
+| `/mind-map:expand_branch focus="costs"` | Grows the branch you've selected in the browser |
+| `/mind-map:challenge_map` | Marks the weak spots with ❓, adds nothing |
+| `/mind-map:quiz_me` | Examines your understanding and grades it on the map |
+
+**Editing by hand.** Click a topic and just type to rename it, `Tab` adds a child, `Enter`
+a sibling, arrow keys move around, `Delete` removes. `⇧P` adds a sticky note, `⇧F` picks up
+a pen to draw, `⌘Z` undoes (your edits *and* the AI's). Press `?` any time to see every
+shortcut. `Esc` takes you back to the gallery:
+
+<p align="center"><img src="docs/images/gallery.png" alt="The map gallery" width="80%"></p>
+
+## Use a different AI app
+
+Any app that supports MCP can drive mind-map. Two of them have a one-command launcher:
+
+```bash
+mindmap omp           # omp (recommended — works with every subscription above)
+mindmap claude        # Claude Code (Claude subscription)
+```
+
+For everything else, start the canvas with `mindmap up` (it prints its address, e.g.
+`http://localhost:5460`), then add mind-map to your app. `mindmap config <app>` prints the
+exact text to paste, with the paths on your computer filled in:
+
+| App | Command | Where to paste it |
 | --- | --- | --- |
-| **HTTP** — `http://localhost:5454/mcp` | Connects to the running app — the same process your browser is looking at. | **For live co-editing.** AI edits stream onto your open canvas. Requires step 1 to be running. |
-| **stdio** — `node <repo>/bin/mindmap.js stdio` | The client spawns the server on demand. If the app is already running on the same maps, it bridges to it; otherwise it runs headless. | Works with or without the app (e.g. Claude Desktop). Edits are live when the app was running at client start; otherwise they land in the files only. |
+| Codex CLI (ChatGPT subscription) | `mindmap config codex` | `~/.codex/config.toml` |
+| Gemini CLI (Google account) | `mindmap config gemini` | `~/.gemini/settings.json` |
+| Claude Desktop | `mindmap config claude-desktop` | Claude → Settings → Developer → Edit Config |
+| opencode | `mindmap config opencode` | `opencode.json` in your folder |
+| Claude Code (manual) | `mindmap config claude-code` | run the printed `claude mcp add …` line |
 
-Copy-paste setup per client (replace `/path/to/mind-map` with your clone; `mindmap config`
-prints these with the real path filled in):
+Restart the app after adding it. The snippets come in two flavors:
 
-**Claude Code**
+- **HTTP** (`http://localhost:5454/mcp`) talks to the running canvas — the AI's edits appear
+  live in your browser. Change the port to the one `mindmap up` printed.
+- **stdio** (`node …/mindmap.js stdio`) lets the app start mind-map by itself. Edits are live
+  if a canvas on the same maps folder is already open; otherwise they're saved to the files
+  and you see them next time you open the map.
 
-```bash
-claude mcp add --transport http mindmap http://localhost:5454/mcp   # live co-editing
-# or, no running app needed:
-claude mcp add mindmap -- node /path/to/mind-map/bin/mindmap.js stdio
-```
-
-**Claude Desktop** — add to `~/Library/Application Support/Claude/claude_desktop_config.json`
-(Linux: `~/.config/Claude/claude_desktop_config.json`), then restart Claude Desktop:
-
-```json
-{ "mcpServers": { "mindmap": { "command": "node", "args": ["/path/to/mind-map/bin/mindmap.js", "stdio"] } } }
-```
-
-> `mindmap config claude-desktop` prints this with the absolute path to your Node binary —
-> use that version if Claude Desktop can't find `node` (GUI apps don't see your shell PATH).
-
-**Codex CLI** — add to `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.mindmap]
-url = "http://localhost:5454/mcp"      # live co-editing
-# or stdio:  command = "node"  /  args = ["/path/to/mind-map/bin/mindmap.js", "stdio"]
-```
-
-**omp (oh-my-pi)** — add to `~/.omp/agent/mcp.json` (all projects) or `.omp/mcp.json` (one project):
-
-```json
-{ "mcpServers": { "mindmap": { "type": "http", "url": "http://localhost:5454/mcp" } } }
-```
-
-Or skip the config entirely with `mindmap omp` (see below).
-
-**opencode** — add to `opencode.json` in your project:
-
-```json
-{ "mcp": { "mindmap": { "type": "remote", "url": "http://localhost:5454/mcp", "enabled": true } } }
-```
-
-Clients load MCP servers **at session start** — restart the client/session after adding.
-
-## Step 3 — Your first co-editing session
-
-With the map open in the browser and your client connected over **HTTP**, try:
-
-> *"List my maps, open the one called X, and map out a launch plan for a weekend project."*
-
-Nodes appear on your canvas as the AI writes them. Then push it further:
-
-> *"Review this map: mark open questions with ❓ and a short note, tag everything
-> launch-critical, and color decided items sage."*
-
-> *"These three ideas don't belong under marketing — pull them out into a floating tree
-> and connect it to the budget node with an arrow labeled 'depends on'."*
-
-And when the map is *your* thinking on a topic, flip the AI from author to critic:
-
-> *"Don't add anything — challenge this map. Mark weak spots with ❓ and put the question
-> in the note, tag them `open`, and draw arrows where my branches contradict each other."*
-
-Then work through the questions: `⌘F` `#open` shows every open one; answer by editing.
-
-Or make it an exam — the map is your claimed understanding, the AI grades it:
-
-> *"Quiz me on this map — one question at a time, don't show me what the map says. At the
-> end mark what I explained well sage ✅ and what I missed ❓ + tag `open`."*
-
-The full examiner protocol (question ladder, no-echo rule, one-batch scoring) is the
-"Quiz the user" workflow in [MCP.md](MCP.md), which every connected client reads — the
-short prompt above is enough to trigger it.
-
-While it works: keep editing by hand, drag nodes around, and press `⌘Z` any time — an AI
-edit (even a 50-op batch) is one undo step, and your version always wins on conflicts.
-Press `⇧I` to see the notes and tags the AI attached.
-
-### One-line routines (slash commands)
-
-The server ships its workflows as MCP **prompts**, which clients surface as slash commands —
-the whole job (plan → create → decorate → export → *look* → fix) from one line:
-
-| Prompt | In omp (`mindmap omp`) | In Claude Code |
-| --- | --- | --- |
-| `build_map` — a polished new map on a topic | `/mind-map:build_map topic="Weekend in Lisbon"` | `/mcp__mind-map__build_map` |
-| `expand_branch` — grow the branch you've selected | `/mind-map:expand_branch focus="costs"` | `/mcp__mind-map__expand_branch` |
-| `challenge_map` — ❓ the weak spots, add nothing | `/mind-map:challenge_map` | `/mcp__mind-map__challenge_map` |
-| `quiz_me` — examine your understanding, grade on canvas | `/mind-map:quiz_me` | `/mcp__mind-map__quiz_me` |
-
-(The prefix is whatever you named the server in your client config — `mind-map` for
-`mindmap omp`/`mindmap claude`, `mindmap` if you followed the snippets above.) The routines'
-text lives in [MCP.md](MCP.md), so editing a workflow there changes the command too.
-
-## Use it inside another project
-
-For maps that belong to a *different* repo (a repo analysis, a presentation outline…),
-run an ephemeral instance from that directory:
+## Updating and uninstalling
 
 ```bash
-cd ~/your/other/project
-mindmap claude    # serve ./mindmaps on a free port, open the browser,
-                  # launch Claude Code with the tools injected; teardown on exit
-mindmap omp       # same, launching omp (oh-my-pi); the server is wired in via
-                  # .omp/mcp.json for the session and restored on exit
-mindmap up        # same server, foreground — prints the URL + config so you can
-                  # connect any other client yourself
+cd ~/mind-map && git pull && ./install.sh     # update
+rm -rf ~/mind-map ~/.local/bin/mindmap        # uninstall (your maps folders are untouched)
 ```
 
-The only thing left in the host repo is `mindmaps/` — plain map JSON, meant to be
-committed so the maps version with that project. Session files live in `.mindmap/`,
-auto-added to `.git/info/exclude`.
+## Your maps, your files
 
-## What your AI can do
+Each map is one readable JSON file in the `mindmaps/` folder of the folder you started from
+(or `maps/` inside the mind-map download when you run `pnpm dev`). There's no database:
+back them up, sync them, or commit them to git like any other file. Exported images go to
+`mindmaps/exports/`.
 
-The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editing surface:
+The app only listens on your own computer (`127.0.0.1`) and rejects requests from other
+websites, so nothing on the internet can read your maps through it. See
+[SECURITY.md](SECURITY.md) for details.
+
+## Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| `mindmap: command not found` | Open a **new** Terminal window after installing. Still missing? Run `~/mind-map/install.sh` again and read its last lines. |
+| `node: command not found` | Install Node.js from [nodejs.org](https://nodejs.org) (LTS), then open a new Terminal window. |
+| `mind-map isn't built — run "pnpm build"` | Run `~/mind-map/install.sh` again (also needed after every update). |
+| The AI says it has no mind-map tools | Apps load tools when they start — quit and restart the app after adding the config. In Claude Code, check with `/mcp`. |
+| The AI's edits don't show up in the browser | Use the **HTTP** config pointing at the address `mindmap up` printed, or start with `mindmap omp` / `mindmap claude`, which connect everything for you. |
+| Claude Desktop can't start the server | Use the snippet from `mindmap config claude-desktop` — it contains the full path to Node, which desktop apps need. |
+| Tab says "This map no longer exists on the server" | The map was deleted, or the tab belongs to an earlier session. Copy what you need (`⌘C`) and close the tab. |
+| "Autosave failed" after updating | Reload the browser tab. |
+
+## Roadmap
+
+**Chat inside the app (next).** A side panel to talk to your map without leaving the
+browser. It will use omp behind the scenes, so it works with the same subscriptions and
+never edits files directly — every change goes through the same tools as the terminal, so
+`⌘Z` undoes a whole AI reply. It will see the open map, your selection, and the project
+folder you started from.
+
+## Reference
+
+### What the AI can do
+
+The built-in MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editing
+surface:
 
 | | Tools |
 | --- | --- |
@@ -212,42 +205,21 @@ The MCP server (full guide for models: [MCP.md](MCP.md)) exposes the whole editi
 | Export & look | `export_map` — renders through your open tab, saves `exports/*.png|svg` next to the maps, and hands the PNG back so the AI can *see* its layout |
 | Create & lay out | `create_map_from_outline` (opens it live, picks a layout), `set_layout`; per-branch `style` via `set_node_meta` |
 
-## Features
+### Features
 
-- **Live AI co-editing** — any MCP client edits the open map; changes stream in, undoable.
-- **Keyboard-first editing** — add, navigate, reorder, and restructure without the mouse.
-- **Four layouts** — logic chart, balanced map, org chart, and a Now/Next/Later roadmap;
-  cycle per-map with `⇧S`. Any branch can override the map's structure (`⇧B`): an org-chart
-  or roadmap subtree inside a right-tree map, nested however you like.
-- **Floating trees** — several root trees on one canvas (XMind floating topics): brainstorm
-  clusters side by side, connect them with arrows, attach/detach branches by dragging.
-- **Relationship arrows** — free directional links between any two nodes, across trees.
-- **Groups** (`⇧G`) — a dashed boundary hugging any set of nodes, even from different
-  parents: pick members with `Space`, confirm with `Enter`, then label and color it.
-- **Search & filter** (`⌘F`) — find nodes by text and `#tags` (matches inside collapsed
-  branches), jump with Enter, or pin the query as a filter that dims everything else.
-- **Hoist** (`⌘.`) — any branch becomes the temporary root, Workflowy-style: navigate,
-  edit, and fit within just that subtree; Esc brings the full map back.
-- **Freeform canvas** — sticky notes, free text, rectangles, ellipses, and **freehand
-  drawing** (`⇧F`) around the trees, Excalidraw-style; ink sits on top, so circling or
-  underlining an idea just works. Anchor one to a node and it follows that node through any layout change;
-  arrows connect elements and nodes alike.
-- **Sketch look** (`⇧D`) — Excalidraw-style hand-drawn boxes, edges, and arrows
-  ([roughjs](https://roughjs.com)) with the handwritten Kalam font; stable wobble per shape.
-- **Export** (`⌘E` PNG, `⌘⇧E` SVG) — self-contained images (fonts embedded), also
-  available to your AI via `export_map`, which hands the PNG back so it can see its work.
-- **Inline markdown** in node text: bold, italic, code, strike, highlight, links.
-- **Node metadata, quietly** — an emoji before the text, a subtle color tint from a small
-  muted palette, a dot for hidden notes, searchable tags; all editable in the `⇧I`
-  inspector and prime territory for your AI to mark status (❓ open, ✅ decided…).
-- **Markdown interop** — copy a branch as a nested list; paste any outline (Obsidian, Notes,
-  XMind exports) as a subtree.
-- **Local-first storage** — one JSON file per map, no database, no cloud.
+- **Live AI co-editing** — changes stream in and land in your undo history; on conflicts, your version wins.
+- **Keyboard-first** — every action has a hotkey; `?` shows them all.
+- **Four layouts** (`⇧S`) — logic chart, balanced map, org chart, Now/Next/Later roadmap; any branch can override it (`⇧B`).
+- **Floating trees, arrows, groups** — several trees on one canvas, labeled arrows between any two ideas, dashed boundaries around related ones.
+- **Freeform canvas** — sticky notes, text, rectangles, ellipses and freehand drawing (`⇧F`), anchored to topics so they move with them.
+- **Sketch look** (`⇧D`) and **export** to PNG/SVG (`⌘E` / `⌘⇧E`).
+- **Search & filter** (`⌘F`, `#tags`), **hoist** a branch (`⌘.`), **node notes/tags/icons/colors** (`⇧I`).
+- **Markdown interop** — copy a branch as a list; paste any outline as a subtree.
 
-New to the code? Start with [ARCHITECTURE.md](ARCHITECTURE.md), then
-[CONTRIBUTING.md](CONTRIBUTING.md).
+<details>
+<summary><b>Every keyboard shortcut</b></summary>
 
-## Hotkeys
+### Canvas
 
 | Key | Action |
 | --- | --- |
@@ -298,7 +270,7 @@ label, `C` cycles its color, `⇧G` re-picks its members, `Delete` removes it (n
 > A/B/D/F/G/H/I/J/K/L/N/O/P/R/S/T won't trigger type-to-edit — press `Space` to edit instead, or unbind them via
 > `localStorage.keymap`.
 
-## Gallery
+### Gallery
 
 The `Esc` screen is a keyboard-driven map menu in three sections: **Pinned** (curated by
 title; `p` toggles a pin, stored in the map file), **Recent** (last five opened, tracked in
@@ -315,52 +287,25 @@ title; `p` toggles a pin, stored in the map file), **Recent** (last five opened,
 | `d` | Delete (confirms first) |
 | `?` | Keyboard cheatsheet |
 
-## Maps & storage
+</details>
 
-Each map is a pretty-printed JSON file in `maps/`, named `<id>.json` — one file per map,
-human-readable, easy to diff and back up. There's no database. The schema is documented in
-[ARCHITECTURE.md](ARCHITECTURE.md#data-model). Your own map files stay on your machine; only
-the demo `welcome.json` is committed to this repo. Per-project sessions store their maps in
-that project's `mindmaps/` folder instead. Override the directory anytime with the
-`MAPS_DIR` env var (and the port with `PORT`). The server listens on `127.0.0.1` only and
-refuses non-localhost `Host`/`Origin` headers, so other machines and web pages can't reach
-your maps.
+### For developers
 
-## Troubleshooting
-
-| Symptom | Fix |
-| --- | --- |
-| `mindmap: command not found` after install | The global bin dir isn't on your PATH — run `pnpm setup`, restart the shell, then `pnpm add -g link:.` again. Or symlink it into a dir already on your PATH: `ln -s "$PWD/bin/mindmap.js" ~/.local/bin/mindmap`. |
-| `mind-map isn't built — run "pnpm build"` | The CLI serves the compiled UI: run `pnpm build` in the repo once (and after every `git pull`). |
-| The client doesn't list the mindmap tools | MCP servers load at session start — restart the client/session after adding the config. In Claude Code, check with `/mcp`. |
-| AI edits don't appear in my browser | Over **stdio**, edits go live only when the app is already running on the *same* maps folder when the client starts the server (it then bridges to the app — the client's log says "bridging to the running app"). Start the app first and restart the client, or use the **HTTP** config (`http://localhost:5454/mcp`). Set `MINDMAP_URL` if the app runs on another port. |
-| Claude Desktop says it can't start the server | GUI apps don't inherit your shell PATH — use the absolute Node path that `mindmap config claude-desktop` prints. |
-| Port 5454 is busy | Another instance owns it. Stop it, or run with `PORT=5460 pnpm start` and point the client at the new port. `mindmap up` picks a free port automatically. |
-| Browser tab shows "Autosave failed" after updating | The tab predates a schema upgrade — reload it. |
-| Tab says "This map no longer exists on the server" | The map was deleted elsewhere, or the tab is left over from an earlier session that used the same port (per-project sessions reuse 5460+). The server refuses to recreate maps from a tab — copy what you need (`⌘C`) and close the tab. |
-| Two people/tools editing the same map | It's a single-user local tool: the browser wins conflicts, and simultaneous browser tabs on one map are last-write-wins. |
-
-## Roadmap
-
-**In-app AI chat (next).** The app is meant to be LLM-centred: a side panel where you talk
-to the map without leaving the browser. The plan:
-
-- **omp is the brain** — the server runs `omp acp` (Agent Client Protocol) in the
-  background and hands it this app's MCP server, so the chat uses your omp models,
-  credentials, and settings, and the exact same tools as the terminal. It never edits the
-  JSON directly: every change goes through the MCP ops, so validation, live sync, and undo
-  keep working.
-- **Side panel** with the conversation history; the map changes live next to it.
-- **Changes apply directly** — one `⌘Z` reverts a whole AI reply.
-- **Context sent automatically** — the open map in full, the selected node ("this branch"),
-  and read access to the project folder `mindmap` was launched from.
-
-## Documentation
+```bash
+pnpm install
+pnpm dev              # http://localhost:5454 with hot reload, maps in ./maps
+pnpm test && pnpm exec tsc --noEmit
+```
 
 - **[ARCHITECTURE.md](ARCHITECTURE.md)** — how it's built: frontend, server, data model,
-  layout, the command/undo-redo pattern, and a diagram.
+  layout, the command/undo-redo pattern.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — setup, conventions, how to add a feature.
 - **[MCP.md](MCP.md)** — the guide AI models read: every tool, the schema, and workflows.
+- **[SECURITY.md](SECURITY.md)** — threat model and how to report a problem.
+
+Settings via environment variables: `MAPS_DIR` (maps folder), `PORT`, `MINDMAP_HOST` (default
+`127.0.0.1`; don't expose it to a network — there's no login), `MINDMAP_URL` (which running
+app a stdio server bridges to).
 
 ## License
 

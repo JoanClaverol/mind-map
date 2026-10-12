@@ -5,10 +5,12 @@ dist/
 .DS_Store
 *.log
 
-# personal maps stay local — only the demo map and folder manifest are tracked
+# personal maps (and the folder manifest) stay local — only the demo map is tracked
 maps/*.json
 !maps/welcome.json
-!maps/folders.json
 
 # image exports (export_map / ⌘E)
 maps/exports/
+
+# per-project session files (mindmap up/claude/omp)
+.mindmap/
