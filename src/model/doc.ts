@@ -195,7 +195,3 @@ export function visibleIds(doc: Doc): string[] {
   for (const f of doc.floating) walk(f.rootId);
   return out;
 }
-
-export function countDescendants(doc: Doc, id: string): number {
-  return subtreeIds(doc, id).length - 1;
-}

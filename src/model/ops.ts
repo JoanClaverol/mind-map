@@ -1,4 +1,4 @@
-import { floatingEntry, newId, subtreeIds } from './doc';
+import { findParent, floatingEntry, newId, subtreeIds } from './doc';
 import { isValidStroke } from './strokes';
 import {
   BRANCH_STYLES,
@@ -94,13 +94,6 @@ export type OpResult = { ok: true; select?: string | null } | { ok: false; reaso
 export function assignIds(node: FileNode): void {
   node.id = newId();
   for (const child of node.children) assignIds(child);
-}
-
-function findParent(doc: Doc, id: string): string | null {
-  for (const node of Object.values(doc.nodes)) {
-    if (node.children.includes(id)) return node.id;
-  }
-  return null;
 }
 
 export function applyDocOp(doc: Doc, op: MapOp): OpResult {

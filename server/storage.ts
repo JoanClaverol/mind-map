@@ -1,11 +1,12 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { nanoid } from 'nanoid';
+import { PKG_ROOT } from './paths';
 import { migrateMapFile } from '../src/model/migrate';
 import { FOLDERS_SCHEMA_VERSION, normalizeFolderName } from '../src/model/types';
 import type { FileNode, FolderInfo, FoldersManifest, MapFile, MapMeta } from '../src/model/types';
 
-const MAPS_DIR = process.env.MAPS_DIR ?? path.resolve(process.cwd(), 'maps');
+const MAPS_DIR = process.env.MAPS_DIR ?? path.resolve(PKG_ROOT, 'maps');
 const FOLDERS_PATH = path.join(MAPS_DIR, 'folders.json');
 const ID_RE = /^[A-Za-z0-9_-]{6,30}$/;
 

@@ -40,11 +40,33 @@ export function fulfillExport(requestId: string, result: ExportResult): boolean 
   return true;
 }
 
-/** Saves next to the maps: <maps dir>/exports/<name>.<ext>. Returns the absolute path. */
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/** The image bytes of an answer, or null when it isn't a PNG / an SVG document. */
+export function exportBytes(result: ExportResult): Buffer | null {
+  if (result.format === 'png') {
+    const buf = Buffer.from(result.data, 'base64');
+    return buf.subarray(0, 8).equals(PNG_MAGIC) ? buf : null;
+  }
+  return /^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/.test(result.data) ? Buffer.from(result.data, 'utf8') : null;
+}
+
+/**
+ * Saves next to the maps: <maps dir>/exports/<name>.<ext>. Returns the absolute path.
+ *
+ * Map folders live inside other people's repos, so exports/ (or a file in it)
+ * may be a planted symlink aiming at ~/.zshrc. Refuse a symlinked directory,
+ * and write a temp file then rename — rename replaces a link, never follows it.
+ */
 export async function saveExport(mapsDir: string, baseName: string, result: ExportResult): Promise<string> {
+  const bytes = exportBytes(result);
+  if (!bytes) throw new Error(`the tab answered with something that isn't a ${result.format.toUpperCase()} image`);
   const dir = path.join(mapsDir, 'exports');
   await fs.mkdir(dir, { recursive: true });
+  if ((await fs.lstat(dir)).isSymbolicLink()) throw new Error(`refusing to write exports: ${dir} is a symlink`);
   const file = path.join(dir, `${baseName}.${result.format}`);
-  await fs.writeFile(file, result.format === 'png' ? Buffer.from(result.data, 'base64') : result.data);
+  const tmp = path.join(dir, `.tmp-${nanoid(8)}.${result.format}`);
+  await fs.writeFile(tmp, bytes, { flag: 'wx' });
+  await fs.rename(tmp, file);
   return file;
 }

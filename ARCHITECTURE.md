@@ -84,13 +84,15 @@ A handful of focused modules under [`server/`](server):
 
 | File | Responsibility |
 | --- | --- |
-| `app.ts` | The Hono app and all `/api/*` routes. Framework-only — mounted by the others. |
-| `vite-plugin.ts` | Mounts `app` as Vite middleware in dev. |
+| `app.ts` | The Hono app and all `/api/*` routes, behind the localhost guard and body-size limits (see [SECURITY.md](SECURITY.md)). Framework-only — mounted by the others. |
+| `vite-plugin.ts` | Mounts `app` as Vite middleware in dev; blocks Vite from serving raw `maps/` files. |
 | `standalone.ts` | Production entry: serves built assets + `serve()` (`pnpm start`). |
 | `storage.ts` | Maps CRUD with atomic writes (unique temp file, rename), serialized per map (`withMapLock` / `updateMap`) so parallel MCP calls and autosave never lose updates. |
 | `mcp-server.ts` | **Inbound** MCP server exposing mind-map tools to AI clients, including surgical node edits (see [MCP.md](MCP.md)). |
 | `mcp-stdio.ts` | stdio entry point for the inbound MCP server. |
 | `presence.ts` | In-memory "what the user is looking at" (open map, selection, hoist), reported by the tab via `POST /api/view` and read by the `get_active_view` MCP tool. |
+| `exports.ts` | `export_map` round trip: asks a tab to render, validates the PNG/SVG it sends back, saves it symlink-safely under `<maps>/exports/`. |
+| `paths.ts` | `PKG_ROOT` — bundled files (`MCP.md`, `.env`, demo `maps/`) resolve from the install folder, never the cwd. |
 | `events.ts` | In-process pub/sub for external map edits (`map-ops` batches), fanned out to browser tabs over SSE (`GET /api/events`). |
 
 The server imports shared types from `src/model/` only; it has no other dependency on the

@@ -9,6 +9,13 @@ import { app } from './app';
 export function apiPlugin(): Plugin {
   const listener = getRequestListener(app.fetch);
   const middleware: Connect.NextHandleFunction = (req, res, next) => {
+    // Vite serves every file under the project root; map files must only ever
+    // leave through the guarded /api (raw, including via /@fs/…/maps/…).
+    if (req.url && /^\/(@fs\/.*\/)?maps\//.test(req.url)) {
+      res.statusCode = 404;
+      res.end();
+      return;
+    }
     if (req.url?.startsWith('/api') || req.url?.startsWith('/mcp')) {
       void listener(req, res);
     } else {

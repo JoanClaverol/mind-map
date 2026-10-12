@@ -75,6 +75,32 @@ describe('localhost guard', () => {
     expect(res.status).toBe(415);
   });
 
+  it('rejects Origin: null (sandboxed frames, file:// pages)', async () => {
+    const { app } = await fresh();
+    const res = await app.request('/api/maps', { headers: { ...LOCAL, origin: 'null' } });
+    expect(res.status).toBe(403);
+  });
+
+  it('caps request body size', async () => {
+    const { app } = await fresh();
+    const res = await app.request('/api/view', {
+      method: 'POST',
+      headers: LOCAL,
+      body: JSON.stringify({ mapId: 'x'.repeat(200_000) }),
+    });
+    expect(res.status).toBe(413);
+  });
+
+  it('rejects an export answer that is not an image', async () => {
+    const { app } = await fresh();
+    const res = await app.request('/api/exports/abc', {
+      method: 'POST',
+      headers: LOCAL,
+      body: JSON.stringify({ format: 'png', data: Buffer.from('not a png').toString('base64') }),
+    });
+    expect(res.status).toBe(400);
+  });
+
   it('allows same-origin requests', async () => {
     const { app } = await fresh();
     const res = await app.request('/api/maps', { headers: { ...LOCAL, origin: 'http://localhost:5454' } });

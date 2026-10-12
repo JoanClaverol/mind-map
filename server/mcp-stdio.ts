@@ -4,6 +4,7 @@ import path from 'node:path';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createMcpServer } from './mcp-server.js';
+import { PKG_ROOT } from './paths.js';
 
 /**
  * stdio entry point. stdout IS the MCP transport — never print to it; logs go
@@ -16,16 +17,25 @@ import { createMcpServer } from './mcp-server.js';
  * still reach the files, just not a live tab.
  */
 
-// Load local overrides (e.g. MAPS_DIR, PORT) from .env if present.
-if (existsSync(path.resolve(process.cwd(), '.env'))) {
+// Load local overrides (e.g. MAPS_DIR, PORT) from the package's .env if present.
+const envFile = path.resolve(PKG_ROOT, '.env');
+if (existsSync(envFile)) {
   try {
-    process.loadEnvFile();
+    process.loadEnvFile(envFile);
   } catch {
     // ignore malformed/missing .env
   }
 }
 
-const mapsDir = process.env.MAPS_DIR ?? path.resolve(process.cwd(), 'maps');
+const mapsDir = process.env.MAPS_DIR ?? path.resolve(PKG_ROOT, 'maps');
+
+function isLoopbackUrl(url: string): boolean {
+  try {
+    return /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
 
 /** Where a running app might be: explicit URL, the project session file, the default port. */
 function candidateUrls(): string[] {
@@ -41,7 +51,9 @@ function candidateUrls(): string[] {
   }
   // `localhost`, not 127.0.0.1: the Vite dev server may listen on ::1 only.
   urls.push(`http://localhost:${process.env.PORT ?? 5454}`);
-  return [...new Set(urls)];
+  // Loopback only: a committed .mindmap/mcp.json (or a stray MINDMAP_URL) must
+  // never route this machine's MCP traffic to another host.
+  return [...new Set(urls)].filter(isLoopbackUrl);
 }
 
 async function findRunningApp(): Promise<string | null> {

@@ -5,7 +5,13 @@ import { apiPlugin } from './server/vite-plugin';
 export default defineConfig(() => {
   return {
     plugins: [react(), apiPlugin()],
-    server: { port: 5454, strictPort: true },
+    server: {
+      port: 5454,
+      strictPort: true,
+      // Other local sites/dev servers must not read anything cross-origin (the
+      // raw maps/ files are also blocked outright — see server/vite-plugin.ts).
+      cors: false,
+    },
     preview: { port: 5454, strictPort: true },
     test: {
       include: ['src/**/*.test.ts', 'server/**/*.test.ts'],

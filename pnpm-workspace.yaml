@@ -1,2 +1,18 @@
 allowBuilds:
   esbuild: true
+
+# Patched transitive deps of @modelcontextprotocol/sdk (express/ajv side, unused
+# by this app's web-standard transport — pinned anyway to keep `pnpm audit` clean).
+minimumReleaseAgeExclude:
+  - ip-address@10.7.4
+
+overrides:
+  fast-uri: ^3.1.7
+  ip-address: ^10.7.4
+  proxy-addr: ^2.0.8
+  qs: ^6.16.0
+  body-parser: ^2.3.0
+  postcss: ^8.5.23
+  browserslist: ^4.28.7
+  source-map-js: ^1.2.2
+  baseline-browser-mapping: ^2.11.0

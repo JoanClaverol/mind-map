@@ -1,12 +1,13 @@
 import { realpath } from 'node:fs/promises';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { streamSSE } from 'hono/streaming';
 import { nanoid } from 'nanoid';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { migrateMapFile } from '../src/model/migrate';
 import { SCHEMA_VERSION, normalizeFolderName, type MapFile } from '../src/model/types';
 import * as events from './events';
-import { fulfillExport } from './exports';
+import { exportBytes, fulfillExport } from './exports';
 import { setActiveView } from './presence';
 import { createMcpServer } from './mcp-server';
 import * as storage from './storage';
@@ -25,7 +26,8 @@ app.use('*', async (c, next) => {
   const host = c.req.header('host');
   if (host && !LOCAL_HOST_RE.test(host)) return c.json({ error: 'forbidden host' }, 403);
   const origin = c.req.header('origin');
-  if (origin && origin !== 'null' && !LOCAL_ORIGIN_RE.test(origin)) return c.json({ error: 'forbidden origin' }, 403);
+  // "null" = sandboxed iframes, file:// pages, some redirects — never this app.
+  if (origin && !LOCAL_ORIGIN_RE.test(origin)) return c.json({ error: 'forbidden origin' }, 403);
   const method = c.req.method;
   if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && method !== 'DELETE') {
     const type = c.req.header('content-type') ?? '';
@@ -34,16 +36,48 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// Size caps: only local processes get past the guard, but a runaway one must
+// not be able to exhaust memory. Exports carry a base64 image, so get more room.
+const MB = 1024 * 1024;
+const tooLarge = (c: Parameters<Parameters<typeof bodyLimit>[0]['onError'] & {}>[0]) =>
+  c.json({ error: 'request body too large' }, 413);
+app.use('/api/exports/*', bodyLimit({ maxSize: 40 * MB, onError: tooLarge }));
+app.use('/api/maps/*', bodyLimit({ maxSize: 10 * MB, onError: tooLarge }));
+app.use('/api/maps', bodyLimit({ maxSize: 1 * MB, onError: tooLarge }));
+app.use('/api/view', bodyLimit({ maxSize: 64 * 1024, onError: tooLarge }));
+app.use('/api/folders/*', bodyLimit({ maxSize: 64 * 1024, onError: tooLarge }));
+app.use('/api/folders', bodyLimit({ maxSize: 64 * 1024, onError: tooLarge }));
+app.use('/mcp', bodyLimit({ maxSize: 10 * MB, onError: tooLarge }));
+
 // One MCP server + transport per client session: a single shared transport
 // accepts exactly one `initialize`, which locks out a second client (or the
 // same client after a restart) until the server is restarted.
 const mcpSessions = new Map<string, WebStandardStreamableHTTPServerTransport>();
+const lastSeen = new Map<string, number>();
+const SESSION_IDLE_MS = 6 * 60 * 60 * 1000;
+
+// Clients that vanish without a DELETE would otherwise leak a server each.
+setInterval(() => {
+  const cutoff = Date.now() - SESSION_IDLE_MS;
+  for (const [id, seen] of lastSeen) {
+    if (seen > cutoff) continue;
+    lastSeen.delete(id);
+    void mcpSessions.get(id)?.close();
+    mcpSessions.delete(id);
+  }
+}, 10 * 60 * 1000).unref();
 
 async function newMcpSession(): Promise<WebStandardStreamableHTTPServerTransport> {
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: () => nanoid(12),
-    onsessioninitialized: (id) => void mcpSessions.set(id, transport),
-    onsessionclosed: (id) => void mcpSessions.delete(id),
+    onsessioninitialized: (id) => {
+      mcpSessions.set(id, transport);
+      lastSeen.set(id, Date.now());
+    },
+    onsessionclosed: (id) => {
+      mcpSessions.delete(id);
+      lastSeen.delete(id);
+    },
   });
   transport.onclose = () => {
     if (transport.sessionId) mcpSessions.delete(transport.sessionId);
@@ -56,6 +90,7 @@ app.all('/mcp', async (c) => {
   const parsedBody = c.req.method === 'POST' ? await c.req.json().catch(() => undefined) : undefined;
   const sessionId = c.req.header('mcp-session-id');
   let transport = sessionId ? mcpSessions.get(sessionId) : undefined;
+  if (transport && sessionId) lastSeen.set(sessionId, Date.now());
   if (!transport) {
     if (sessionId) return c.json({ jsonrpc: '2.0', error: { code: -32001, message: 'Session not found' }, id: null }, 404);
     // No session yet: only an initialize may open one (the transport rejects anything else).
@@ -105,7 +140,9 @@ app.post('/api/exports/:requestId', async (c) => {
   if (!body || (body.format !== 'png' && body.format !== 'svg') || typeof body.data !== 'string') {
     return c.json({ error: 'format (png|svg) and data are required' }, 400);
   }
-  const ok = fulfillExport(c.req.param('requestId'), { format: body.format, data: body.data });
+  const result = { format: body.format, data: body.data } as const;
+  if (!exportBytes(result)) return c.json({ error: `data is not a ${body.format} image` }, 400);
+  const ok = fulfillExport(c.req.param('requestId'), result);
   return ok ? c.json({ ok: true }) : c.json({ error: 'no pending export' }, 404);
 });
 
