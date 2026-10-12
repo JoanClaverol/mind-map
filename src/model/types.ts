@@ -19,17 +19,35 @@ export const MAX_ICON_LEN = 16;
 export const MAX_NOTE_LEN = 2000;
 export const MAX_TAGS = 8;
 export const MAX_TAG_LEN = 24;
+/** Label on the edge entering a node (flow layout: the data passed from the previous step). */
+export const MAX_EDGE_LABEL_LEN = 40;
+
+/**
+ * Workflow step types (n8n-style proof-of-concept flows). Rendered as a small
+ * type badge above the node text and a type-colored outline.
+ */
+export const STEP_KINDS = ['trigger', 'ai', 'tool', 'condition', 'human', 'output'] as const;
+export type StepKind = (typeof STEP_KINDS)[number];
+export const STEP_LABELS: Record<StepKind, string> = {
+  trigger: 'Trigger',
+  ai: 'AI',
+  tool: 'Tool',
+  condition: 'If',
+  human: 'Human',
+  output: 'Output',
+};
 
 /** How the tree is arranged on the canvas. */
-export type LayoutStyle = 'right' | 'balanced' | 'down' | 'timeline';
+export type LayoutStyle = 'right' | 'balanced' | 'down' | 'timeline' | 'flow';
 
-export const LAYOUT_STYLES: LayoutStyle[] = ['right', 'balanced', 'down', 'timeline'];
+export const LAYOUT_STYLES: LayoutStyle[] = ['right', 'balanced', 'down', 'timeline', 'flow'];
 
 export const LAYOUT_LABELS: Record<LayoutStyle, string> = {
   right: 'right',
   balanced: 'balanced',
   down: 'org chart',
   timeline: 'roadmap',
+  flow: 'flow',
 };
 
 /**
@@ -38,7 +56,7 @@ export const LAYOUT_LABELS: Record<LayoutStyle, string> = {
  */
 export type BranchStyle = Exclude<LayoutStyle, 'balanced'>;
 
-export const BRANCH_STYLES: BranchStyle[] = ['right', 'down', 'timeline'];
+export const BRANCH_STYLES: BranchStyle[] = ['right', 'down', 'timeline', 'flow'];
 
 /** A node as stored on disk: nested, human-readable, git-diffable. */
 export interface FileNode {
@@ -55,6 +73,10 @@ export interface FileNode {
   tags?: string[];
   /** Subtree structure override (see BRANCH_STYLES) — typed loosely because disk is untrusted; migrate narrows. */
   style?: string;
+  /** Workflow step type (see STEP_KINDS) — typed loosely because disk is untrusted; migrate narrows. */
+  step?: string;
+  /** Label on the edge from the parent (flow: the data passed in). */
+  edgeLabel?: string;
   children: FileNode[];
 }
 
@@ -222,6 +244,8 @@ export interface DocNode {
   note?: string;
   tags?: string[];
   style?: string;
+  step?: string;
+  edgeLabel?: string;
   children: string[];
 }
 

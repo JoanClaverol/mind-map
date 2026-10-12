@@ -90,7 +90,7 @@ export function MindMapCanvas() {
   const layout = useMemo(() => {
     if (!viewDoc) return null;
     const ids = visibleIds(viewDoc);
-    const sizes = new Map(ids.map((id) => [id, measureText(viewDoc.nodes[id].text, viewDoc.nodes[id].icon)]));
+    const sizes = new Map(ids.map((id) => [id, measureText(viewDoc.nodes[id].text, viewDoc.nodes[id].icon, viewDoc.nodes[id].step)]));
     const result = layoutTree(viewDoc, (id) => sizes.get(id)!);
     setLastLayout(result);
     return result;
@@ -522,6 +522,9 @@ export function MindMapCanvas() {
           <marker id="rel-arrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
             <path className="rel-arrow" d="M0,0 L7,3.5 L0,7 Z" />
           </marker>
+          <marker id="flow-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto">
+            <path className="flow-arrowhead" d="M0,0 L8,4 L0,8 Z" />
+          </marker>
           <marker id="rel-arrow-selected" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
             <path className="rel-arrow-selected" d="M0,0 L7,3.5 L0,7 Z" />
           </marker>
@@ -572,6 +575,8 @@ export function MindMapCanvas() {
                     from={layout.rects.get(id)!}
                     to={layout.rects.get(childId)!}
                     dir={layout.dirs.get(childId) ?? 'right'}
+                    flow={layout.flowEdges.has(childId)}
+                    label={doc.nodes[childId].edgeLabel}
                   />
                 ));
             })}

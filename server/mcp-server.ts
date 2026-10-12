@@ -4,7 +4,14 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { denormalize, docFromMap, serializeElements, serializeFloating, subtreeIds } from '../src/model/doc';
-import { branchToMarkdown, markdownToBranches } from '../src/model/markdown';
+import { applyFlowMarkers, branchToMarkdown, markdownToBranches as parseOutline } from '../src/model/markdown';
+
+/** Outline → branches, honoring workflow markers (`[ai] Step <- data`). */
+function markdownToBranches(markdown: string): FileNode[] {
+  const branches = parseOutline(markdown);
+  applyFlowMarkers(branches);
+  return branches;
+}
 import { applyDocOp, assignIds, type MapOp } from '../src/model/ops';
 import { normalizeStroke } from '../src/model/strokes';
 import {
@@ -15,6 +22,7 @@ import {
   LAYOUT_STYLES,
   NODE_COLORS,
   SCHEMA_VERSION,
+  STEP_KINDS,
   type BranchStyle,
   type CanvasElement,
   type Doc,
@@ -24,6 +32,7 @@ import {
   type LayoutStyle,
   type MapFile,
   type NodeColor,
+  type StepKind,
 } from '../src/model/types';
 import { publish } from './events';
 import { PKG_ROOT } from './paths';
@@ -207,7 +216,7 @@ interface MapFile {
   title: string;
   createdAt: string;
   updatedAt: string;
-  layout?: 'right' | 'balanced' | 'down' | 'timeline';
+  layout?: 'right' | 'balanced' | 'down' | 'timeline' | 'flow';
   pinned?: boolean;
   relationships?: Array<{ id: string; from: string; to: string; label?: string }>;
   // Dashed boundaries around sets of nodes (≥ 2 members each, possibly from different parents)
@@ -226,7 +235,9 @@ interface FileNode {
   icon?: string;    // leading emoji shown before the text (max 16 chars)
   note?: string;    // longer hidden text (max 2000 chars)
   tags?: string[];  // searchable labels (max 8 tags, 24 chars each)
-  style?: string;   // subtree structure override: right | down | timeline ('balanced' is map-level only)
+  style?: string;   // subtree structure override: right | down | timeline | flow ('balanced' is map-level only)
+  step?: string;    // workflow step type: trigger | ai | tool | condition | human | output
+  edgeLabel?: string; // label on the arrow from the parent (flow: the data passed in; max 40 chars)
   children: FileNode[];
 }
 \`\`\`
@@ -235,9 +246,19 @@ All map files are stored as pretty-printed JSON in the maps/ directory.`;
   return `${mcpGuide}\n\n---\n\n# Schema reference\n\n${schema}`;
 }
 
+const STEP_CHOICES = [...STEP_KINDS, 'none'] as [string, ...string[]];
+const stepDescription =
+  'Workflow step type, shown as a colored badge: trigger, ai (LLM call/agent), tool (API/app action), condition (if/branch), human (approval/input), output; "none" clears';
+const edgeLabelDescription =
+  'Label on the arrow coming INTO this node from its parent — in a flow, the data passed from the previous step (e.g. "email body"); empty string clears';
+
+function toStep(step: string | undefined): StepKind | null | undefined {
+  return step === undefined ? undefined : step === 'none' ? null : (step as StepKind);
+}
+
 const STYLE_CHOICES = ['inherit', ...BRANCH_STYLES] as [string, ...string[]];
 const styleDescription =
-  'Branch structure override for this subtree: right (logic chart), down (org chart), timeline (Now/Next/Later roadmap); "inherit" clears';
+  'Branch structure override for this subtree: right (logic chart), down (org chart), timeline (Now/Next/Later roadmap), flow (n8n-style workflow: steps left to right joined by arrows); "inherit" clears';
 
 function toStyle(style: string | undefined): BranchStyle | null | undefined {
   return style === undefined ? undefined : style === 'inherit' ? null : (style as BranchStyle);
@@ -654,7 +675,7 @@ export function createMcpServer(): McpServer {
     'set_node_meta',
     {
       description:
-        'Sets node metadata: style (the subtree\'s layout structure — e.g. make one branch an org chart or roadmap), color (one of sage/mist/clay/sand/rose — "none" clears), icon (a leading emoji; "" clears), note (longer hidden text shown in the inspector; "" clears), tags (searchable labels; [] clears, the array replaces the whole list). Absent fields are left untouched. Use color/icon to mark status (e.g. ❓ open question, sage = decided), notes for detail that would clutter the canvas. The edit appears live in an open browser tab and is undoable there.',
+        'Sets node metadata: step (workflow step type badge: trigger/ai/tool/condition/human/output), edge_label (label on the arrow coming into the node — the data passed in a flow), style (the subtree\'s layout structure — e.g. make one branch an org chart, roadmap, or flow), color (one of sage/mist/clay/sand/rose — "none" clears), icon (a leading emoji; "" clears), note (longer hidden text shown in the inspector; "" clears), tags (searchable labels; [] clears, the array replaces the whole list). Absent fields are left untouched. Use color/icon to mark status (e.g. ❓ open question, sage = decided), notes for detail that would clutter the canvas. The edit appears live in an open browser tab and is undoable there.',
       inputSchema: z
         .object({
           map_id: z.string().describe('The map id'),
@@ -664,6 +685,8 @@ export function createMcpServer(): McpServer {
           note: z.string().optional().describe('Longer hidden text; empty string clears'),
           tags: z.array(z.string()).optional().describe('Replaces the tag list; [] clears'),
           style: z.enum(STYLE_CHOICES).optional().describe(styleDescription),
+          step: z.enum(STEP_CHOICES).optional().describe(stepDescription),
+          edge_label: z.string().optional().describe(edgeLabelDescription),
         })
         .refine(
           (a) =>
@@ -671,8 +694,10 @@ export function createMcpServer(): McpServer {
             a.icon !== undefined ||
             a.note !== undefined ||
             a.tags !== undefined ||
-            a.style !== undefined,
-          { message: 'provide at least one of color/icon/note/tags/style' },
+            a.style !== undefined ||
+            a.step !== undefined ||
+            a.edge_label !== undefined,
+          { message: 'provide at least one of color/icon/note/tags/style/step/edge_label' },
         ),
     },
     async (args) => {
@@ -685,6 +710,8 @@ export function createMcpServer(): McpServer {
           note: args.note === undefined ? undefined : args.note || null,
           tags: args.tags === undefined ? undefined : args.tags.length ? args.tags : null,
           style: toStyle(args.style),
+          step: toStep(args.step),
+          edgeLabel: args.edge_label === undefined ? undefined : args.edge_label || null,
         },
       ]);
       if ('error' in r) return errorResult(r.error);
@@ -875,6 +902,8 @@ export function createMcpServer(): McpServer {
       note: z.string().optional(),
       tags: z.array(z.string()).optional(),
       style: z.enum(STYLE_CHOICES).optional(),
+      step: z.enum(STEP_CHOICES).optional(),
+      edge_label: z.string().optional(),
     }),
     z.object({ op: z.literal('set_layout'), layout: z.enum(LAYOUT_STYLES as [LayoutStyle, ...LayoutStyle[]]) }),
     z.object({ op: z.literal('add_element'), kind: z.enum(KIND_CHOICES), ...elementFields }),
@@ -1010,6 +1039,8 @@ export function createMcpServer(): McpServer {
               note: item.note === undefined ? undefined : item.note || null,
               tags: item.tags === undefined ? undefined : item.tags.length ? item.tags : null,
               style: toStyle(item.style),
+              step: toStep(item.step),
+              edgeLabel: item.edge_label === undefined ? undefined : item.edge_label || null,
             });
             summaries.push(`[${i}] set_node_meta ${item.node_id}`);
             break;
@@ -1051,14 +1082,14 @@ export function createMcpServer(): McpServer {
     'create_map_from_outline',
     {
       description:
-        'Creates a new map from a markdown outline (nested bullets: -, *, +; two-space indent per level). A single top-level bullet becomes the central topic; several become its children under a root named after the title. By default the map opens on the user\'s screen. Returns the outline annotated with node ids for follow-up edits.',
+        'Creates a new map from a markdown outline (nested bullets: -, *, +; two-space indent per level). A single top-level bullet becomes the central topic; several become its children under a root named after the title. Workflow markers: a leading `[trigger]`/`[ai]`/`[tool]`/`[if]`/`[human]`/`[output]` sets the step type and a trailing `<- data` labels the incoming arrow (e.g. `- [ai] Classify email <- email body`) — use with layout "flow". By default the map opens on the user\'s screen. Returns the outline annotated with node ids for follow-up edits.',
       inputSchema: z.object({
         title: z.string().describe('Title for the new map'),
         markdown: z.string().optional().describe('Markdown outline to use as the map content'),
         layout: z
           .enum(LAYOUT_STYLES as [LayoutStyle, ...LayoutStyle[]])
           .optional()
-          .describe('right (logic chart, default), balanced (both sides), down (org chart), timeline (roadmap)'),
+          .describe('right (logic chart, default), balanced (both sides), down (org chart), timeline (roadmap), flow (workflow: steps left to right joined by arrows)'),
         open: z.boolean().optional().describe('Open it in the user\'s browser tab (default true)'),
       }),
     },
@@ -1136,7 +1167,7 @@ export function createMcpServer(): McpServer {
     'set_layout',
     {
       description:
-        'Sets the whole map\'s layout structure: right (logic chart), balanced (branches on both sides of the root), down (org chart), timeline (Now/Next/Later roadmap). For a single branch, use set_node_meta style instead. Undoable in the browser.',
+        'Sets the whole map\'s layout structure: right (logic chart), balanced (branches on both sides of the root), down (org chart), timeline (Now/Next/Later roadmap), flow (n8n-style workflow: typed steps left to right joined by arrows). For a single branch, use set_node_meta style instead. Undoable in the browser.',
       inputSchema: z.object({
         map_id: z.string().describe('The map id'),
         layout: z.enum(LAYOUT_STYLES as [LayoutStyle, ...LayoutStyle[]]),
@@ -1255,13 +1286,29 @@ export function createMcpServer(): McpServer {
       description: 'Plan, create, decorate, visually check, and polish a new mind map on a topic — live on the canvas',
       argsSchema: {
         topic: z.string().describe('What the map is about (and any must-haves)'),
-        layout: z.string().optional().describe('Optional: right | balanced | down | timeline'),
+        layout: z.string().optional().describe('Optional: right | balanced | down | timeline | flow'),
       },
     },
     async ({ topic, layout }) =>
       promptMessage(
         `Build a mind map about: ${topic}${layout ? `\nUse the "${layout}" layout.` : ''}\n\n` +
           `Follow this routine exactly, using the mindmap tools:\n\n${await guideSection('Build a polished map in one go')}`,
+      ),
+  );
+
+  server.registerPrompt(
+    'build_workflow',
+    {
+      title: 'Build an AI workflow',
+      description: 'Sketch an n8n-style workflow proof of concept as a flow: typed steps, data on the arrows, config in notes',
+      argsSchema: {
+        goal: z.string().describe('What the workflow should automate (trigger, inputs, desired outcome)'),
+      },
+    },
+    async ({ goal }) =>
+      promptMessage(
+        `Design a workflow that: ${goal}\n\n` +
+          `Follow this routine exactly, using the mindmap tools:\n\n${await guideSection('Design a workflow (flow layout)')}`,
       ),
   );
 

@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import type { NodeDir, Rect } from '../layout/layout';
 import { renderNodeContent } from '../model/inline-markdown';
-import { NODE_COLORS, type DocNode, type NodeColor } from '../model/types';
+import { NODE_COLORS, STEP_KINDS, type DocNode, type NodeColor, type StepKind } from '../model/types';
 import { useStore } from '../state/store';
 import { sameDataProps } from './memo';
 import { roughBox } from './sketch';
@@ -39,7 +39,7 @@ export const NodeView = memo(NodeViewImpl, sameDataProps);
 
 function NodeViewImpl({ node, rect, dir, selected, isRoot, dimmed, linkSource, groupMember, onPressStart, onEdit, onToggleCollapse }: NodeViewProps) {
   const sketch = useStore((s) => s.sketch);
-  const rectClass = `node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${linkSource ? ' link-source' : ''}${groupMember ? ' group-member' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}`;
+  const rectClass = `node-rect${selected ? ' selected' : ''}${isRoot ? ' root' : ''}${linkSource ? ' link-source' : ''}${groupMember ? ' group-member' : ''}${node.color && NODE_COLORS.includes(node.color as NodeColor) ? ` color-${node.color}` : ''}${node.step && STEP_KINDS.includes(node.step as StepKind) ? ` step-${node.step}` : ''}`;
   const box = sketch ? roughBox(node.id, rect.w, rect.h) : null;
   const badgeText = `+${node.children.length}`;
   const badgeWidth = 14 + 7 * badgeText.length;
@@ -78,7 +78,7 @@ function NodeViewImpl({ node, rect, dir, selected, isRoot, dimmed, linkSource, g
           style={{ width: rect.w }}
           onClick={handleLinkClick}
           onAuxClick={handleLinkClick}
-          dangerouslySetInnerHTML={{ __html: renderNodeContent(node.text, node.icon) }}
+          dangerouslySetInnerHTML={{ __html: renderNodeContent(node.text, node.icon, node.step) }}
         />
       </foreignObject>
       {node.note && <circle className="note-dot" cx={rect.w - 8} cy={rect.h - 8} r={2.5} />}

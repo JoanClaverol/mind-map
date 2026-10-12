@@ -35,6 +35,11 @@ export interface LayoutResult {
   dirs: Map<string, NodeDir>;
   /** One horizontal axis per timeline structure (map-level or branch override). */
   axes: Array<{ y: number; x1: number; x2: number }>;
+  /**
+   * Nodes whose incoming edge belongs to a flow structure — drawn as a
+   * straight arrow carrying the node's edgeLabel instead of a curve.
+   */
+  flowEdges: Set<string>;
 }
 
 export interface LayoutOptions {
@@ -45,6 +50,20 @@ export interface LayoutOptions {
 }
 
 export const DEFAULT_LAYOUT: LayoutOptions = { gapX: 48, gapY: 14 };
+
+/** Flow (workflow) spacing: room for an arrowhead, and siblings further apart. */
+export const FLOW_GAP_X = 72;
+export const FLOW_GAP_Y = 28;
+/** Clearance on each side of an edge label inside a flow gap. */
+const FLOW_LABEL_PAD = 22;
+
+/** Width of an edge-label chip — shared with EdgeView so layout reserves exactly what renders. */
+export function edgeLabelWidth(label: string): number {
+  return 14 + 6.5 * label.length;
+}
+
+/** Left-to-right row structures: the logic chart and the workflow flow. */
+const isRow = (s: BranchStyle): s is 'right' | 'flow' => s === 'right' || s === 'flow';
 
 /**
  * Split the root's children for the balanced style: first half right, second
@@ -84,6 +103,20 @@ export function layoutTree(
   const bands = new Map<string, { start: number; size: number }>();
   const dirs = new Map<string, NodeDir>();
   const axes: LayoutResult['axes'] = [];
+  const flowEdges = new Set<string>();
+
+  // Depth-axis gap after id in a row structure. A flow gap widens to fit the
+  // widest label on the edges leaving id, so labels never overlap the boxes.
+  const rowGap = (id: string, style: BranchStyle): number => {
+    if (style !== 'flow') return opts.gapX;
+    let gap = FLOW_GAP_X;
+    for (const c of childrenOf(id)) {
+      const label = doc.nodes[c].edgeLabel;
+      if (label) gap = Math.max(gap, edgeLabelWidth(label) + 2 * FLOW_LABEL_PAD);
+    }
+    return gap;
+  };
+  const sibGap = (style: BranchStyle): number => (style === 'flow' ? FLOW_GAP_Y : opts.gapY);
 
   // The style governing id's subtree. The map root's own style is ignored —
   // doc.layout governs there (a stray root override must not fight it).
@@ -107,10 +140,10 @@ export function layoutTree(
     } else {
       const kids = childrenOf(id);
       const kidHs = kids.map((c) => blockH(c, styleOf(c, style)));
-      if (style === 'right') {
+      if (isRow(style)) {
         h = sizeOf(id).h;
         if (kids.length > 0) {
-          const block = kidHs.reduce((a, b) => a + b, 0) + opts.gapY * (kids.length - 1);
+          const block = kidHs.reduce((a, b) => a + b, 0) + sibGap(style) * (kids.length - 1);
           h = Math.max(h, block);
         }
       } else {
@@ -137,7 +170,7 @@ export function layoutTree(
           w = Math.max(w, block);
         }
       } else {
-        w = sizeOf(id).w + (kids.length > 0 ? opts.gapX + Math.max(...kidWs) : 0);
+        w = sizeOf(id).w + (kids.length > 0 ? rowGap(id, style) + Math.max(...kidWs) : 0);
       }
     }
     blockWs.set(id, w);
@@ -193,7 +226,7 @@ export function layoutTree(
       for (const p of phases) {
         const ps = styleOf(p, 'timeline');
         const ph = sizeOf(p).h;
-        if (ps === 'right') {
+        if (isRow(ps)) {
           // Block centered on the axis (the phase node sits mid-block).
           colWidths.push(blockW(p, ps));
           maxAbove = Math.max(maxAbove, blockH(p, ps) / 2);
@@ -226,7 +259,7 @@ export function layoutTree(
 
   /** Place an override block with its bounding box's top-left at (bx, by). */
   const placeBlock = (id: string, style: BranchStyle, bx: number, by: number): void => {
-    if (style === 'right') placeH(id, bx, by, 1);
+    if (isRow(style)) placeH(id, bx, by, 1, style);
     else if (style === 'down') placeV(id, by, bx);
     else placeTimelineAt(id, bx - tlMetrics(id).offsetX, by);
   };
@@ -236,11 +269,18 @@ export function layoutTree(
    * embed a block otherwise (dir/band then reflect the parent structure).
    * Returns the child's band extent along y.
    */
-  const placeHChild = (c: string, anchorX: number, cy: number, dir: 1 | -1): number => {
-    const cs = styleOf(c, 'right');
+  const placeHChild = (
+    c: string,
+    anchorX: number,
+    cy: number,
+    dir: 1 | -1,
+    rowStyle: 'right' | 'flow' = 'right',
+  ): number => {
+    const cs = styleOf(c, rowStyle);
     const ch = blockH(c, cs);
-    if (cs === 'right') {
-      placeH(c, anchorX, cy, dir);
+    if (rowStyle === 'flow') flowEdges.add(c);
+    if (cs === rowStyle) {
+      placeH(c, anchorX, cy, dir, rowStyle);
     } else {
       placeBlock(c, cs, dir === 1 ? anchorX : anchorX - blockW(c, cs), cy);
       dirs.set(c, dir === 1 ? 'right' : 'left');
@@ -251,20 +291,21 @@ export function layoutTree(
 
   // dir = +1 grows rightward (anchorX is the node's left edge); -1 mirrors
   // (anchorX is the node's right edge, children recurse leftward).
-  const placeH = (id: string, anchorX: number, top: number, dir: 1 | -1): void => {
+  const placeH = (id: string, anchorX: number, top: number, dir: 1 | -1, style: 'right' | 'flow' = 'right'): void => {
     const { w, h } = sizeOf(id);
-    const band = blockH(id, 'right');
+    const band = blockH(id, style);
     const x = dir === 1 ? anchorX : anchorX - w;
     bands.set(id, { start: top, size: band });
     rects.set(id, { x, y: top + (band - h) / 2, w, h });
     dirs.set(id, dir === 1 ? 'right' : 'left');
     const kids = childrenOf(id);
     if (kids.length === 0) return;
+    const gap = rowGap(id, style);
     const block =
-      kids.reduce((sum, c) => sum + blockH(c, styleOf(c, 'right')), 0) + opts.gapY * (kids.length - 1);
+      kids.reduce((sum, c) => sum + blockH(c, styleOf(c, style)), 0) + sibGap(style) * (kids.length - 1);
     let cy = top + (band - block) / 2;
     for (const c of kids) {
-      cy += placeHChild(c, dir === 1 ? x + w + opts.gapX : x - opts.gapX, cy, dir) + opts.gapY;
+      cy += placeHChild(c, dir === 1 ? x + w + gap : x - gap, cy, dir, style) + sibGap(style);
     }
   };
 
@@ -316,7 +357,7 @@ export function layoutTree(
       const pStyle = styleOf(p, 'timeline');
       if (pStyle !== 'timeline') {
         // Override phase: the phase node sits on the axis, the block hangs off it.
-        const top = pStyle === 'right' ? axisY - blockH(p, pStyle) / 2 : axisY - ps.h / 2;
+        const top = isRow(pStyle) ? axisY - blockH(p, pStyle) / 2 : axisY - ps.h / 2;
         placeBlock(p, pStyle, bx, top);
         dirs.set(p, 'down');
         bands.set(p, { start: bx, size: m.colWidths[i] });
@@ -353,7 +394,9 @@ export function layoutTree(
     axes.push({ y: axisY, x1: ox, x2: ox + m.phasesW });
   };
 
-  if (doc.layout === 'timeline') {
+  if (doc.layout === 'flow') {
+    placeH(doc.rootId, 0, 0, 1, 'flow');
+  } else if (doc.layout === 'timeline') {
     placeTimelineAt(doc.rootId, 0, 0);
   } else if (doc.layout === 'down') {
     placeV(doc.rootId, 0, 0);
@@ -384,8 +427,8 @@ export function layoutTree(
   for (const f of doc.floating) {
     const fs = styleOf(f.rootId, 'right');
     const { w, h } = sizeOf(f.rootId);
-    if (fs === 'right') {
-      placeH(f.rootId, f.pos.x, f.pos.y - (blockH(f.rootId, fs) - h) / 2, 1);
+    if (isRow(fs)) {
+      placeH(f.rootId, f.pos.x, f.pos.y - (blockH(f.rootId, fs) - h) / 2, 1, fs);
     } else if (fs === 'down') {
       placeV(f.rootId, f.pos.y, f.pos.x - (blockW(f.rootId, fs) - w) / 2);
     } else {
@@ -404,5 +447,5 @@ export function layoutTree(
     maxX = Math.max(maxX, r.x + r.w);
     maxY = Math.max(maxY, r.y + r.h);
   }
-  return { rects, bands, dirs, axes, bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY } };
+  return { rects, bands, dirs, axes, flowEdges, bounds: { x: minX, y: minY, w: maxX - minX, h: maxY - minY } };
 }

@@ -105,6 +105,14 @@ body,
 .node-rect.color-sand { fill: #f7f1df; stroke: #d7c698; } /* from #c9a227 (pin gold) */
 .node-rect.color-rose { fill: #f8ebe6; stroke: #dab7a9; } /* from #d3705f (muted red) */
 
+/* Workflow step types: a type-colored outline (fill stays the node color). */
+.node-rect.step-trigger { stroke: #c9a227; stroke-width: 1.5; }
+.node-rect.step-ai { stroke: #8a6fb8; stroke-width: 1.5; }
+.node-rect.step-tool { stroke: #5e81ac; stroke-width: 1.5; }
+.node-rect.step-condition { stroke: #c08552; stroke-width: 1.5; }
+.node-rect.step-human { stroke: #d3705f; stroke-width: 1.5; }
+.node-rect.step-output { stroke: #5d9272; stroke-width: 1.5; }
+
 .node-rect.root {
   fill: var(--root-bg);
 }
@@ -136,6 +144,27 @@ body,
 .node-text .node-icon {
   margin-right: 6px;
 }
+
+/* Workflow step badge — its own line above the text (measured with it). */
+.node-text .node-step {
+  display: block;
+  width: max-content;
+  margin-bottom: 4px;
+  padding: 0 7px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+}
+.node-step.step-trigger { background: #c9a227; }
+.node-step.step-ai { background: #8a6fb8; }
+.node-step.step-tool { background: #5e81ac; }
+.node-step.step-condition { background: #c08552; }
+.node-step.step-human { background: #d3705f; }
+.node-step.step-output { background: #5d9272; }
 
 /* Marks a node carrying a note (inside bottom-right). */
 .note-dot {
@@ -186,6 +215,26 @@ body,
   fill: none;
   stroke: var(--edge);
   stroke-width: 1.5;
+}
+
+/* Workflow connectors (flow layout): solid, darker, with an arrowhead. */
+.edge.flow {
+  stroke: var(--muted);
+}
+
+.flow-arrowhead {
+  fill: var(--muted);
+}
+
+.flow-label rect {
+  fill: var(--bg);
+  stroke: var(--edge);
+}
+
+.flow-label text {
+  font-size: 11px;
+  fill: var(--muted);
+  user-select: none;
 }
 
 .relationship {
@@ -401,6 +450,7 @@ body,
 }
 
 .inspector-fields input,
+.inspector-fields select,
 .inspector-fields textarea {
   font: inherit;
   font-size: 13px;
@@ -415,6 +465,7 @@ body,
 }
 
 .inspector-fields input:focus,
+.inspector-fields select:focus,
 .inspector-fields textarea:focus {
   outline: none;
   border-color: var(--node-selected);

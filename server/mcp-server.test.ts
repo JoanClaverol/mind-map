@@ -57,6 +57,28 @@ describe('mcp-server tools', () => {
     expect(map.root.children.map((c) => c.text)).toEqual(['Friday', 'Saturday']);
   });
 
+  it('creates a workflow from an outline with step and arrow-label markers', async () => {
+    const client = await createClient();
+    const text = textContent(
+      await client.callTool({
+        name: 'create_map_from_outline',
+        arguments: {
+          title: 'Triage',
+          markdown: '- [trigger] New email\n  - [ai] Classify <- email body\n    - [tool] Page on-call <- urgent',
+          layout: 'flow',
+          open: false,
+        },
+      }),
+    );
+    const id = text.match(/id: ([A-Za-z0-9_-]+)/)?.[1]!;
+    const map = JSON.parse(readFileSync(path.join(mapsDir, `${id}.json`), 'utf8')) as MapFile;
+    expect(map.layout).toBe('flow');
+    expect(map.root).toMatchObject({ text: 'New email', step: 'trigger' });
+    expect(map.root.children[0]).toMatchObject({ text: 'Classify', step: 'ai', edgeLabel: 'email body' });
+    const md = textContent(await client.callTool({ name: 'read_map_markdown', arguments: { map_id: id } }));
+    expect(md).toContain('[tool] Page on-call <- urgent');
+  });
+
   it('add_element draws a freehand stroke from pixel points', async () => {
     const client = await createClient();
     const text = textContent(
@@ -77,13 +99,17 @@ describe('mcp-server tools', () => {
   it('exposes the routines as prompts, with their text pulled from MCP.md', async () => {
     const client = await createClient();
     const { prompts } = await client.listPrompts();
-    expect(prompts.map((p) => p.name).sort()).toEqual(['build_map', 'challenge_map', 'expand_branch', 'quiz_me']);
+    expect(prompts.map((p) => p.name).sort()).toEqual(['build_map', 'build_workflow', 'challenge_map', 'expand_branch', 'quiz_me']);
     const build = await client.getPrompt({ name: 'build_map', arguments: { topic: 'Trip to Japan', layout: 'timeline' } });
     const text = (build.messages[0].content as { text: string }).text;
     expect(text).toContain('Trip to Japan');
     expect(text).toContain('"timeline" layout');
     expect(text).toContain('create_map_from_outline'); // the routine itself
     expect(text).not.toContain('### Expand the selected branch'); // one section only
+    const wf = await client.getPrompt({ name: 'build_workflow', arguments: { goal: 'triage support email' } });
+    const wfText = (wf.messages[0].content as { text: string }).text;
+    expect(wfText).toContain('triage support email');
+    expect(wfText).toContain('layout: "flow"');
     const quiz = await client.getPrompt({ name: 'quiz_me', arguments: {} });
     expect((quiz.messages[0].content as { text: string }).text).toContain('Read once, silently');
   });

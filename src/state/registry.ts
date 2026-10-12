@@ -13,6 +13,8 @@ import {
   LAYOUT_LABELS,
   LAYOUT_STYLES,
   NODE_COLORS,
+  STEP_KINDS,
+  STEP_LABELS,
   type BranchStyle,
   type CanvasElement,
   type ElementKind,
@@ -689,7 +691,7 @@ export const registry: Record<string, AppCommand> = {
   'history.undo': { description: 'Undo', run: () => state().undo() },
   'history.redo': { description: 'Redo', run: () => state().redo() },
   'map.cycleLayout': {
-    description: 'Cycle layout structure (right → balanced → org chart → roadmap)',
+    description: 'Cycle layout structure (right → balanced → org chart → roadmap → flow)',
     run: () => {
       const s = state();
       if (!s.doc) return;
@@ -700,7 +702,7 @@ export const registry: Record<string, AppCommand> = {
     },
   },
   'node.cycleStyle': {
-    description: 'Cycle branch structure (inherit → right → org chart → roadmap)',
+    description: 'Cycle branch structure (inherit → right → org chart → roadmap → flow)',
     run: () =>
       withSelection((id) => {
         const s = state();
@@ -714,6 +716,18 @@ export const registry: Record<string, AppCommand> = {
           cur === undefined ? BRANCH_STYLES[0] : BRANCH_STYLES[BRANCH_STYLES.indexOf(cur) + 1];
         s.runCommand('setNodeStyle', (d) => cmd.setNodeMeta(d, id, { style: next ?? null }));
         s.addToast('info', next ? `Branch: ${LAYOUT_LABELS[next]}` : 'Branch: inherit');
+      }),
+  },
+  'node.cycleStep': {
+    description: 'Cycle workflow step type (none → trigger → AI → tool → if → human → output)',
+    run: () =>
+      withSelection((id) => {
+        const s = state();
+        const cur = s.doc!.nodes[id].step;
+        const i = STEP_KINDS.indexOf(cur as (typeof STEP_KINDS)[number]);
+        const next = i === -1 ? STEP_KINDS[0] : STEP_KINDS[i + 1];
+        s.runCommand('setNodeStep', (d) => cmd.setNodeMeta(d, id, { step: next ?? null }));
+        s.addToast('info', next ? `Step: ${STEP_LABELS[next]}` : 'Step: none');
       }),
   },
   'view.zoomIn': {

@@ -40,9 +40,47 @@ note, and draw an arrow between two branches that depend on each other."*
 <p align="center"><img src="docs/images/chat-step3.png" alt="Step 3: open questions marked with question marks and an arrow from When to go to Budget" width="100%"></p>
 
 Other things to ask: *"expand the Food branch"*, *"turn this into a roadmap"*, *"quiz me on
-this map"*, *"export it as a PNG"*. And when you prefer the hand-drawn look, press `⇧D`:
+this map"*, *"export it as a PNG"*.
 
-<p align="center"><img src="docs/images/sketch.png" alt="A podcast plan map in the hand-drawn sketch look" width="100%"></p>
+## Prototype AI workflows (n8n-style)
+
+Describe an automation in plain words and get a **workflow proof of concept** you can
+discuss before building it in n8n, Zapier or code: typed steps (trigger, AI, tool, if,
+human, output), the data flowing between them written on the arrows, and the model, prompt
+or API settings of each step in its note. A real session, two messages:
+
+<p align="center"><img src="docs/images/chat-workflow.png" alt="Two chat messages produce a support-email triage workflow: trigger, AI classification, an if-branch, Slack paging with an error path, an AI draft, human approval and outputs" width="100%"></p>
+
+> *"Sketch a workflow proof of concept, n8n style: when a support email arrives, an AI
+> classifies it. Urgent ones page the on-call engineer on Slack; the rest get an AI-drafted
+> reply that a human approves before it is sent. Use the flow layout."*
+>
+> *"Add an error path: if paging on Slack fails, email the team lead instead. And put the
+> model and prompt you would use in the AI steps' notes."*
+
+In omp, `/mind-map:build_workflow goal="…"` runs the same routine in one line. By hand:
+`⇧S` switches a map to the flow layout (or `⇧B` just one branch), `⇧W` cycles a step's
+type, and `⇧I` edits its note and the label of the arrow coming into it.
+
+## One map, many formats
+
+The same content can be shown the way that fits it — switch with `⇧S` (whole map) or `⇧B`
+(one branch), or just ask the AI *"show this as a roadmap"*:
+
+<table>
+<tr>
+<td width="50%"><img src="docs/images/format-balanced.png" alt="Balanced mind map"><br><b>Mind map</b> — ideas around a center</td>
+<td width="50%"><img src="docs/images/format-right.png" alt="Logic chart"><br><b>Logic chart</b> — a topic broken down left to right</td>
+</tr>
+<tr>
+<td><img src="docs/images/format-down.png" alt="Org chart"><br><b>Org chart</b> — hierarchies and teams</td>
+<td><img src="docs/images/format-timeline.png" alt="Roadmap"><br><b>Roadmap</b> — Now / Next / Later plans</td>
+</tr>
+<tr>
+<td><img src="docs/images/format-flow.png" alt="Workflow flow"><br><b>Flow</b> — workflows: typed steps joined by arrows</td>
+<td><img src="docs/images/format-sketch.png" alt="Hand-drawn look"><br><b>Hand-drawn look</b> (<code>⇧D</code>) — any format, Excalidraw-style</td>
+</tr>
+</table>
 
 ## Works with the AI you already pay for
 
@@ -132,6 +170,7 @@ folder gives that project its own maps.
 | `/mind-map:expand_branch focus="costs"` | Grows the branch you've selected in the browser |
 | `/mind-map:challenge_map` | Marks the weak spots with ❓, adds nothing |
 | `/mind-map:quiz_me` | Examines your understanding and grades it on the map |
+| `/mind-map:build_workflow goal="…"` | Designs an n8n-style workflow proof of concept |
 
 **Editing by hand.** Click a topic and just type to rename it, `Tab` adds a child, `Enter`
 a sibling, arrow keys move around, `Delete` removes. `⇧P` adds a sticky note, `⇧F` picks up
@@ -206,7 +245,8 @@ websites, so nothing on the internet can read your maps through it. See
 browser. It will use omp behind the scenes, so it works with the same subscriptions and
 never edits files directly — every change goes through the same tools as the terminal, so
 `⌘Z` undoes a whole AI reply. It will see the open map, your selection, and the project
-folder you started from.
+folder you started from. The panel collapses to a slim bar with one key, so the whole
+canvas is free to navigate while the AI keeps working.
 
 ## Reference
 
@@ -234,7 +274,7 @@ surface:
 
 - **Live AI co-editing** — changes stream in and land in your undo history; on conflicts, your version wins.
 - **Keyboard-first** — every action has a hotkey; `?` shows them all.
-- **Four layouts** (`⇧S`) — logic chart, balanced map, org chart, Now/Next/Later roadmap; any branch can override it (`⇧B`).
+- **Five layouts** (`⇧S`) — logic chart, balanced map, org chart, Now/Next/Later roadmap, and an n8n-style workflow flow (typed steps `⇧W`, labeled arrows); any branch can override it (`⇧B`).
 - **Floating trees, arrows, groups** — several trees on one canvas, labeled arrows between any two ideas, dashed boundaries around related ones.
 - **Freeform canvas** — sticky notes, text, rectangles, ellipses and freehand drawing (`⇧F`), anchored to topics so they move with them.
 - **Sketch look** (`⇧D`) and **export** to PNG/SVG (`⌘E` / `⌘⇧E`).
@@ -257,8 +297,9 @@ surface:
 | `h j k l` or arrows | Navigate by screen direction (toward root / down / up / deeper — adapts to the layout structure) |
 | `⇧J` / `⇧K` | Move node down / up on screen (reorder; nest/un-nest in org chart) |
 | `⇧L` / `⇧H` | Move node right / left on screen (nest/un-nest; reorder in org chart) |
-| `⇧S` | Cycle layout structure: right tree → balanced map → org chart → roadmap (per map, undoable) |
-| `⇧B` | Cycle the selected **branch**'s structure: inherit → right tree → org chart → roadmap (the subtree renders in that structure inside the map; on the root it cycles the map) |
+| `⇧S` | Cycle layout structure: right tree → balanced map → org chart → roadmap → flow (per map, undoable) |
+| `⇧B` | Cycle the selected **branch**'s structure: inherit → right tree → org chart → roadmap → flow (the subtree renders in that structure inside the map; on the root it cycles the map) |
+| `⇧W` | Cycle the selected node's **workflow step** type: none → trigger → AI → tool → if → human → output (a colored badge; set the incoming arrow's label in `⇧I`) |
 | `⇧N` | New **floating tree** at the view center (a detached tree on the same canvas — connect it later with arrows, or drag it onto a node to attach) |
 | `⇧I` | **Node inspector** — view/edit the selected node's color, icon, note, and tags (panel follows the selection; Esc closes) |
 | `/` | Collapse / expand branch |
@@ -291,8 +332,8 @@ label, `C` cycles its color, `⇧G` re-picks its members, `Delete` removes it (n
 
 > Because `⇧HJKL` move, `⇧A` draws an arrow, `⇧G` groups, `⇧I` opens the inspector, `⇧N`
 > adds a floating tree, `⇧D` toggles the sketch look, `⇧P`/`⇧T`/`⇧R`/`⇧O` add canvas elements,
-> `⇧F` picks up the pen, and `⇧S`/`⇧B` switch structure, typing a *capital*
-> A/B/D/F/G/H/I/J/K/L/N/O/P/R/S/T won't trigger type-to-edit — press `Space` to edit instead, or unbind them via
+> `⇧F` picks up the pen, `⇧W` sets a workflow step, and `⇧S`/`⇧B` switch structure, typing a *capital*
+> A/B/D/F/G/H/I/J/K/L/N/O/P/R/S/T/W won't trigger type-to-edit — press `Space` to edit instead, or unbind them via
 > `localStorage.keymap`.
 
 ### Gallery

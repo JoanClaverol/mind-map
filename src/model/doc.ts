@@ -40,6 +40,8 @@ export function normalize(
     if (n.note) node.note = n.note;
     if (n.tags?.length) node.tags = [...n.tags];
     if (n.style) node.style = n.style;
+    if (n.step) node.step = n.step;
+    if (n.edgeLabel) node.edgeLabel = n.edgeLabel;
     nodes[n.id] = node;
     n.children.forEach(walk);
   };
@@ -117,6 +119,8 @@ export function denormalize(doc: Doc, id: string = doc.rootId): FileNode {
   if (n.note) out.note = n.note;
   if (n.tags?.length) out.tags = [...n.tags];
   if (n.style) out.style = n.style;
+  if (n.step) out.step = n.step;
+  if (n.edgeLabel) out.edgeLabel = n.edgeLabel;
   return out;
 }
 

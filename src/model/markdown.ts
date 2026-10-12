@@ -1,4 +1,4 @@
-import type { Doc, FileNode } from './types';
+import { MAX_EDGE_LABEL_LEN, STEP_KINDS, type Doc, type FileNode, type StepKind } from './types';
 
 /**
  * Serialize a branch as a nested markdown list. The branch root is depth 0;
@@ -22,9 +22,11 @@ export function branchToMarkdown(
     const idTag = opts?.ids ? ` (id: ${id})` : '';
     const color = opts?.meta && node.color ? ` [${node.color}]` : '';
     const tags = opts?.meta && node.tags?.length ? ` ${node.tags.map((t) => `#${t}`).join(' ')}` : '';
+    const step = opts?.meta && node.step ? `[${node.step}] ` : '';
+    const edge = opts?.meta && node.edgeLabel ? ` <- ${node.edgeLabel}` : '';
     const cutOff = opts?.maxDepth !== undefined && depth >= opts.maxDepth && node.children.length > 0;
     const hidden = cutOff ? ` … (+${node.children.length} children hidden)` : '';
-    lines.push(`${'  '.repeat(depth)}- ${icon}${text}${idTag}${color}${tags}${hidden}`);
+    lines.push(`${'  '.repeat(depth)}- ${step}${icon}${text}${edge}${idTag}${color}${tags}${hidden}`);
     if (opts?.meta && node.note) {
       lines.push(`${'  '.repeat(depth + 1)}> ${node.note.replace(/\s+/g, ' ').trim()}`);
     }
@@ -92,4 +94,37 @@ export function markdownToBranches(text: string): FileNode[] {
     }
   }
   return roots;
+}
+
+const STEP_ALIASES: Record<string, StepKind> = { if: 'condition', llm: 'ai', agent: 'ai', api: 'tool', end: 'output' };
+const STEP_MARK_RE = /^\[([a-z]+)\]\s+(.*)$/i;
+const EDGE_MARK_RE = /^(.*?)\s+(?:<-|←)\s+(.+)$/;
+
+/**
+ * Workflow outline markers, for AI-written flows: a leading `[ai]` (any step
+ * type, or if/llm/agent/api/end) sets the node's step, and a trailing
+ * `<- label` (or `← label`) sets the label of the arrow coming into it —
+ * `- [ai] Classify email <- email body`. Mutates the branches in place.
+ * Unknown bracket words are left as text. MCP-only: the clipboard paste
+ * format stays plain markdown.
+ */
+export function applyFlowMarkers(branches: FileNode[]): void {
+  const walk = (n: FileNode) => {
+    const step = STEP_MARK_RE.exec(n.text);
+    if (step) {
+      const word = step[1].toLowerCase();
+      const kind = (STEP_KINDS as readonly string[]).includes(word) ? (word as StepKind) : STEP_ALIASES[word];
+      if (kind) {
+        n.step = kind;
+        n.text = step[2];
+      }
+    }
+    const edge = EDGE_MARK_RE.exec(n.text);
+    if (edge) {
+      n.text = edge[1].trim();
+      n.edgeLabel = edge[2].trim().slice(0, MAX_EDGE_LABEL_LEN);
+    }
+    n.children.forEach(walk);
+  };
+  branches.forEach(walk);
 }

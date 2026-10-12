@@ -71,8 +71,10 @@ This split keeps the request handlers identical in both environments.
   [`src/layout/measure.ts`](src/layout/measure.ts), which measures text in an offscreen div
   using the same `.node-text` CSS as the real nodes — and the same `renderNodeContent`
   HTML (inline markdown + optional icon, cache keyed by both) — so measured and rendered
-  sizes always agree. Four structures are supported: `right` (logic chart, default), `balanced` (both
-  sides of the root), `down` (org chart), and `timeline` (roadmap). **Floating trees** always
+  sizes always agree. Five structures are supported: `right` (logic chart, default), `balanced` (both
+  sides of the root), `down` (org chart), `timeline` (roadmap), and `flow` (workflow: a
+  right-tree with wider gaps sized to fit each outgoing edge label; its edges are listed in
+  the result's `flowEdges` and drawn as straight arrows carrying the child's `edgeLabel`). **Floating trees** always
   lay out as compact right-trees, placed by translating each tree so its root lands on the
   stored `pos`. The result includes a
   `dirs` map saying which way each branch grows; rendering, `hjkl` navigation, and drag-drop
@@ -110,7 +112,7 @@ interface MapFile {
   title: string;
   createdAt: string;     // ISO 8601
   updatedAt: string;     // ISO 8601
-  layout?: 'right' | 'balanced' | 'down' | 'timeline';
+  layout?: 'right' | 'balanced' | 'down' | 'timeline' | 'flow';
   pinned?: boolean;
   relationships?: Relationship[];
   groups?: Group[];
@@ -129,6 +131,9 @@ interface FileNode {
   icon?: string;         // leading emoji, rendered before the text (never part of text)
   note?: string;         // hidden longer text — dot on canvas, shown in the ⇧I inspector
   tags?: string[];       // searchable labels (find_nodes)
+  style?: string;        // subtree structure override (BRANCH_STYLES)
+  step?: string;         // workflow step type (STEP_KINDS) — badge above the text, measured with it
+  edgeLabel?: string;    // label on the edge from the parent (flow: the data passed in)
   children: FileNode[];
 }
 

@@ -10,6 +10,7 @@ import type {
   LayoutStyle,
   NodeColor,
   Position,
+  StepKind,
 } from '../model/types';
 
 /**
@@ -159,6 +160,8 @@ export function setNodeMeta(
     note?: string | null;
     tags?: string[] | null;
     style?: BranchStyle | null;
+    step?: StepKind | null;
+    edgeLabel?: string | null;
   },
 ): CommandResult {
   const r = applyDocOp(draft, { type: 'set_node_meta', nodeId, ...meta });

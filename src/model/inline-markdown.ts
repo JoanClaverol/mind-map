@@ -1,3 +1,4 @@
+import { STEP_KINDS, STEP_LABELS, type StepKind } from './types';
 /**
  * Inline markdown → HTML for node text: **bold**, *italic*, ***both***,
  * `code`, ~~strike~~, ==highlight== and [text](url) links. Inline-only by
@@ -103,7 +104,10 @@ export function renderInlineMarkdown(raw: string): string {
  * added only on one side makes measured and rendered widths drift. The icon
  * is escaped plain text, never markdown-parsed, and lives only in node.icon.
  */
-export function renderNodeContent(text: string, icon?: string): string {
+export function renderNodeContent(text: string, icon?: string, step?: string): string {
   const body = renderInlineMarkdown(text);
-  return icon ? `<span class="node-icon">${escapeHtml(icon)}</span>${body}` : body;
+  const withIcon = icon ? `<span class="node-icon">${escapeHtml(icon)}</span>${body}` : body;
+  const kind = step && STEP_KINDS.includes(step as StepKind) ? (step as StepKind) : null;
+  // Workflow step badge: its own line above the text, so it's measured like any content.
+  return kind ? `<span class="node-step step-${kind}">${STEP_LABELS[kind]}</span>${withIcon}` : withIcon;
 }

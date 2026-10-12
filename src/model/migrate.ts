@@ -12,6 +12,9 @@ import {
   MAX_NOTE_LEN,
   MAX_TAGS,
   MAX_TAG_LEN,
+  MAX_EDGE_LABEL_LEN,
+  STEP_KINDS,
+  type StepKind,
   NODE_COLORS,
   SCHEMA_VERSION,
   normalizeFolderName,
@@ -42,6 +45,12 @@ function sanitizeNodeMeta(node: FileNode): void {
   if (node.color !== undefined && !NODE_COLORS.includes(node.color as NodeColor)) delete node.color;
   // Branch styles: 'balanced' is map-level only, so it is invalid here too.
   if (node.style !== undefined && !BRANCH_STYLES.includes(node.style as BranchStyle)) delete node.style;
+  if (node.step !== undefined && !STEP_KINDS.includes(node.step as StepKind)) delete node.step;
+  if (node.edgeLabel !== undefined) {
+    const label = typeof node.edgeLabel === 'string' ? node.edgeLabel.replace(/\s+/g, ' ').trim().slice(0, MAX_EDGE_LABEL_LEN) : '';
+    if (label) node.edgeLabel = label;
+    else delete node.edgeLabel;
+  }
   if (node.icon !== undefined) {
     const icon = typeof node.icon === 'string' ? node.icon.trim() : '';
     if (icon && icon.length <= MAX_ICON_LEN) node.icon = icon;

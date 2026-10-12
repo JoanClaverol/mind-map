@@ -71,8 +71,8 @@ When the user says "this map", "this node", "here", or "the selected branch", ca
 
 ### `set_layout`
 
-- Arguments: `{ map_id: string, layout: "right" | "balanced" | "down" | "timeline" }`
-- The whole map's structure: logic chart, both-sides map, org chart, Now/Next/Later roadmap. Undoable in the browser. For one branch, use `set_node_meta` `style`.
+- Arguments: `{ map_id: string, layout: "right" | "balanced" | "down" | "timeline" | "flow" }`
+- The whole map's structure: logic chart, both-sides map, org chart, Now/Next/Later roadmap, or an n8n-style workflow flow. Undoable in the browser. For one branch, use `set_node_meta` `style`.
 
 ### `export_map`
 
@@ -164,7 +164,8 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 
 ### `set_node_meta`
 
-- Arguments: `{ map_id: string, node_id: string, color?: string, icon?: string, note?: string, tags?: string[], style?: "right" | "down" | "timeline" | "inherit" }`
+- Arguments: `{ map_id: string, node_id: string, color?: string, icon?: string, note?: string, tags?: string[], style?: "right" | "down" | "timeline" | "flow" | "inherit", step?: "trigger" | "ai" | "tool" | "condition" | "human" | "output" | "none", edge_label?: string }`
+- `step` puts a workflow type badge on the node (`"none"` clears); `edge_label` (max 40 chars) labels the arrow coming into the node from its parent — in a flow, the data passed in (`""` clears).
 - `style` makes that subtree render in its own structure (e.g. a roadmap branch inside a logic chart); `"inherit"` clears it.
 - Partial update: absent fields are left untouched. Clearing: `color: "none"`, `icon: ""`, `note: ""`, `tags: []` (the array always replaces the whole list).
 - `color` is one of the palette names `sage | mist | clay | sand | rose` — rendered as a subtle tint. `icon` is a leading emoji (max 16 chars) shown before the text. `note` (max 2000 chars) is hidden behind the node — a dot marks it on canvas; the user reads it in the inspector. `tags` (max 8 × 24 chars) are searchable via `find_nodes`.
@@ -232,7 +233,8 @@ Node metadata renders inline: the icon before the text, `[color]` and `#tags` af
 
 ### `create_map_from_outline`
 
-- Arguments: `{ title: string, markdown?: string, layout?: "right" | "balanced" | "down" | "timeline", open?: boolean }`
+- Arguments: `{ title: string, markdown?: string, layout?: "right" | "balanced" | "down" | "timeline" | "flow", open?: boolean }`
+- Workflow markers in the outline (also in `add_nodes`): a leading `[trigger]`, `[ai]`, `[tool]`, `[if]`/`[condition]`, `[human]` or `[output]` sets the step type, and a trailing `<- label` sets the incoming arrow's label — `- [ai] Classify email <- email body`.
 - Parses the markdown into a tree and saves a new map. Several top-level bullets become children of a root named after the title; a single top-level bullet becomes the root (central topic) itself.
 - Opens the map in the user's browser unless `open: false`.
 - Returns the new map id and the outline annotated with node ids, ready for follow-up `apply_ops` (metadata, arrows, groups).
@@ -246,7 +248,7 @@ interface MapFile {
   title: string;
   createdAt: string;    // ISO 8601
   updatedAt: string;    // ISO 8601
-  layout?: 'right' | 'balanced' | 'down' | 'timeline';
+  layout?: 'right' | 'balanced' | 'down' | 'timeline' | 'flow';
   pinned?: boolean;
   relationships?: Relationship[];
   groups?: Group[];
@@ -263,7 +265,9 @@ interface FileNode {
   icon?: string;        // leading emoji shown before the text (max 16 chars)
   note?: string;        // longer hidden text (max 2000 chars)
   tags?: string[];      // searchable labels (max 8 tags, 24 chars each)
-  style?: string;       // subtree structure override: right | down | timeline ('balanced' is map-level only)
+  style?: string;       // subtree structure override: right | down | timeline | flow ('balanced' is map-level only)
+  step?: string;        // workflow step type: trigger | ai | tool | condition | human | output
+  edgeLabel?: string;   // label on the arrow from the parent (flow: the data passed in; max 40 chars)
   children: FileNode[];
 }
 
@@ -409,6 +413,38 @@ The routine behind the `build_map` prompt — the whole job in ~4 tool calls, ch
    `set_layout`). At most two look/fix rounds.
 6. **Report briefly**: what you built, the legend, and the open questions you flagged.
    Don't paste the outline back — it's on the user's screen.
+
+### Design a workflow (flow layout)
+
+The routine behind the `build_workflow` prompt — an n8n-style proof of concept the user can
+read at a glance. In the `flow` layout the tree reads left to right as steps joined by
+arrows: a node's children are what runs next; several children = a branch.
+
+1. **Plan the steps first.** One trigger (the root), then 4–10 steps. Each step is one
+   action named verb-first in ≤ 5 words ("Classify email", "Post to Slack"). Pick its type:
+   `trigger` (what starts it: webhook, schedule, new email…), `ai` (an LLM call or agent),
+   `tool` (an app/API action), `condition` (if/switch — its children are the branches),
+   `human` (approval or input), `output` (the end result).
+2. **Create** with `create_map_from_outline`, `layout: "flow"`, writing the markers inline:
+   ```
+   - [trigger] New support email
+     - [ai] Classify intent <- email body
+       - [if] Is it urgent? <- category
+         - [tool] Page on-call <- yes
+         - [ai] Draft reply <- no
+           - [human] Approve reply <- draft
+             - [output] Send email <- approved text
+   ```
+   The `<- label` on a step is the data arriving from the previous one; on a condition's
+   children, it names the branch (`yes` / `no` / `refund` …).
+3. **Configure in ONE `apply_ops` batch**: a `note` on each `ai`/`tool` step with its
+   configuration — model and prompt for AI steps, app + operation + key fields for tools,
+   the rule for conditions. Where branches **merge** again or a loop goes back, add a
+   labeled `add_relationship` (the tree can't express a join). Stickies (`add_element`,
+   anchored) for open questions: credentials, rate limits, error handling.
+4. **Look**: `export_map` and check that the flow reads left to right without crossings.
+5. **Report**: the steps in one line each, the assumptions, and what to decide before
+   building it for real (e.g. in n8n).
 
 ### Expand the selected branch
 

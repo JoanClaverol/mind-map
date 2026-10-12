@@ -12,6 +12,9 @@ import {
   MAX_NOTE_LEN,
   MAX_TAGS,
   MAX_TAG_LEN,
+  MAX_EDGE_LABEL_LEN,
+  STEP_KINDS,
+  type StepKind,
   LAYOUT_STYLES,
   NODE_COLORS,
   type BranchStyle,
@@ -81,6 +84,8 @@ export type MapOp =
       note?: string | null;
       tags?: string[] | null;
       style?: BranchStyle | null;
+      step?: StepKind | null;
+      edgeLabel?: string | null;
     };
 
 /**
@@ -154,9 +159,18 @@ function setNodeMeta(doc: Doc, op: Extract<MapOp, { type: 'set_node_meta' }>): O
     op.icon === undefined &&
     op.note === undefined &&
     op.tags === undefined &&
-    op.style === undefined
+    op.style === undefined &&
+    op.step === undefined &&
+    op.edgeLabel === undefined
   ) {
-    return { ok: false, reason: 'set_node_meta requires at least one of color/icon/note/tags/style' };
+    return { ok: false, reason: 'set_node_meta requires at least one of color/icon/note/tags/style/step/edgeLabel' };
+  }
+  if (op.step != null && !STEP_KINDS.includes(op.step)) {
+    return { ok: false, reason: `unknown step type "${op.step}" — valid types: ${STEP_KINDS.join(', ')}` };
+  }
+  const edgeLabel = op.edgeLabel == null ? op.edgeLabel : op.edgeLabel.replace(/\s+/g, ' ').trim();
+  if (edgeLabel != null && edgeLabel.length > MAX_EDGE_LABEL_LEN) {
+    return { ok: false, reason: `edge label is longer than ${MAX_EDGE_LABEL_LEN} characters` };
   }
   // Validate everything before mutating anything.
   if (op.color != null && !NODE_COLORS.includes(op.color)) {
@@ -214,6 +228,14 @@ function setNodeMeta(doc: Doc, op: Extract<MapOp, { type: 'set_node_meta' }>): O
     if (op.style === null) delete node.style;
     else node.style = op.style;
   }
+  if (op.step !== undefined) {
+    if (op.step === null) delete node.step;
+    else node.step = op.step;
+  }
+  if (edgeLabel !== undefined) {
+    if (edgeLabel === null || edgeLabel === '') delete node.edgeLabel;
+    else node.edgeLabel = edgeLabel;
+  }
   return { ok: true, select: op.nodeId };
 }
 
@@ -250,6 +272,8 @@ function insertBranch(doc: Doc, branch: FileNode, intoId: string | null): void {
   if (branch.note) node.note = branch.note;
   if (branch.tags?.length) node.tags = [...branch.tags];
   if (branch.style) node.style = branch.style;
+  if (branch.step) node.step = branch.step;
+  if (branch.edgeLabel) node.edgeLabel = branch.edgeLabel;
   doc.nodes[branch.id] = node;
   if (intoId !== null) doc.nodes[intoId].children.push(branch.id);
   for (const child of branch.children) insertBranch(doc, child, branch.id);
