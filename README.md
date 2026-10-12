@@ -2,13 +2,15 @@
 
 **A visual whiteboard for your ideas that your AI draws for you — live, on your own computer.**
 
-You describe what you want ("map out a launch plan for my podcast"), and your AI assistant
-builds the mind map in front of you: topics, colors, sticky notes, arrows, even hand-drawn
-underlines. You can keep editing by hand at the same time, and `⌘Z` undoes anything the AI
-did. Think [Excalidraw](https://excalidraw.com) or [XMind](https://xmind.app), but made to
-be driven by AI.
+**You chat, the map draws itself.** Describe what you want in plain words — *"make a mind
+map for planning a weekend in Lisbon"* — and your AI assistant builds it in front of you:
+topics, colors, emoji, sticky notes, arrows, open questions. Then keep talking to refine it.
+You can also edit by hand at any time, and `⌘Z` undoes anything the AI did. Think
+[Excalidraw](https://excalidraw.com) or [XMind](https://xmind.app), but made to be driven by
+conversation.
 
-<p align="center"><img src="docs/images/map.png" alt="A mind map about launching a podcast, with colored branches, a sticky note, an arrow and a hand-drawn underline" width="100%"></p>
+<p align="center"><img src="docs/images/chat-demo.gif" alt="Three chat messages on the left build a Lisbon trip mind map on the right, step by step" width="100%"></p>
+<p align="center"><em>A real session: the conversation with the AI on the left, the map in your browser on the right.</em></p>
 
 - **Use the AI subscription you already have** — Claude, ChatGPT, Gemini, GitHub Copilot…
   no extra account, nothing to pay for this tool.
@@ -16,8 +18,31 @@ be driven by AI.
   no sign-up. (Your AI app sends what it reads to its own provider, as it always does.)
 - **Free and open source** ([MIT](LICENSE)).
 
-<p align="center"><img src="docs/images/sketch.png" alt="The same map in the hand-drawn sketch look" width="100%"></p>
-<p align="center"><em>Press <code>⇧D</code> for the hand-drawn look. Export to PNG or SVG with <code>⌘E</code>.</em></p>
+## How it works: just ask
+
+Each picture below is one message, exactly as typed, with the AI's real reply (shortened)
+and what it did to the map. Nothing was edited by hand.
+
+**1. Ask for a map.** *"Make a mind map for planning a weekend trip to Lisbon: when to go,
+where to stay, what to see, food, and budget. Keep it short."*
+
+<p align="center"><img src="docs/images/chat-step1.png" alt="Step 1: the AI creates the Lisbon map from one sentence" width="100%"></p>
+
+**2. Shape it.** *"Color each main branch, give each one a fitting emoji, and add a sticky
+note next to Budget with a rough total."* — the AI even exports a picture of the map to
+check its own layout.
+
+<p align="center"><img src="docs/images/chat-step2.png" alt="Step 2: colors, emoji and a sticky note with the budget total" width="100%"></p>
+
+**3. Think with it.** *"Now challenge my plan: mark the open questions with ❓ and a short
+note, and draw an arrow between two branches that depend on each other."*
+
+<p align="center"><img src="docs/images/chat-step3.png" alt="Step 3: open questions marked with question marks and an arrow from When to go to Budget" width="100%"></p>
+
+Other things to ask: *"expand the Food branch"*, *"turn this into a roadmap"*, *"quiz me on
+this map"*, *"export it as a PNG"*. And when you prefer the hand-drawn look, press `⇧D`:
+
+<p align="center"><img src="docs/images/sketch.png" alt="A podcast plan map in the hand-drawn sketch look" width="100%"></p>
 
 ## Works with the AI you already pay for
 
